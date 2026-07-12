@@ -3,7 +3,7 @@
 ## Supported versions
 
 Security fixes are applied to the latest published DitakNet monitoring release
-(Docker/GHCR image tags such as `2.0.0`). Older tags may not receive backports
+(Docker/GHCR image tags such as `2.0.1`). Older tags may not receive backports
 unless a support agreement says otherwise.
 
 ## Reporting a vulnerability

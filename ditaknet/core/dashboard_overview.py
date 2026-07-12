@@ -193,20 +193,36 @@ def _format_percent(value: float | None) -> str:
 def _format_ms(value: float | int | None) -> str:
     if value is None:
         return "--"
-    return f"{int(round(float(value)))} ms"
+    try:
+        return f"{int(round(float(value)))} ms"
+    except (TypeError, ValueError):
+        return "--"
+
+
+def _safe_ms(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _response_points(rows: list[dict[str, Any]], *, limit: int = 44) -> list[dict[str, Any]]:
-    values = [
-        {
-            "ms": float(row["response_time_ms"]),
-            "status": _normalize_state(str(row.get("status") or "")),
-            "checked_at": row.get("checked_at") or "",
-        }
-        for row in reversed(rows)
-        if row.get("response_time_ms") is not None
-    ][-limit:]
-    max_ms = max((point["ms"] for point in values), default=1.0)
+    values: list[dict[str, Any]] = []
+    for row in reversed(rows):
+        ms = _safe_ms(row.get("response_time_ms"))
+        if ms is None:
+            continue
+        values.append(
+            {
+                "ms": ms,
+                "status": _normalize_state(str(row.get("status") or "")),
+                "checked_at": row.get("checked_at") or "",
+            }
+        )
+    values = values[-limit:]
+    max_ms = max((point["ms"] for point in values), default=1.0) or 1.0
     for point in values:
         point["height"] = max(8, min(100, int((point["ms"] / max_ms) * 100)))
         point["label"] = _format_ms(point["ms"])
@@ -232,8 +248,8 @@ async def _build_dashboard_monitors(hosts_status: list[dict[str, Any]]) -> list[
         uptime = uptime_percent(rows)
         avg_response = average_response_ms(rows_for_primary or rows)
         current_response = (
-            float(latest["response_time_ms"])
-            if latest and latest.get("response_time_ms") is not None
+            _safe_ms(latest.get("response_time_ms"))
+            if latest
             else None
         )
         monitors.append(
@@ -659,7 +675,13 @@ async def build_dashboard_overview(lang: str = "en") -> dict[str, Any]:
         or license_status.get("multi_office_enabled")
     )
 
-    max_hosts = license_status.get("max_hosts")
+    max_hosts_raw = license_status.get("max_hosts")
+    try:
+        max_hosts = int(max_hosts_raw) if max_hosts_raw not in (None, "") else None
+        if max_hosts is not None and max_hosts <= 0:
+            max_hosts = None
+    except (TypeError, ValueError):
+        max_hosts = None
     used_hosts = int(license_status.get("used_hosts") or 0)
     license_pct = int((used_hosts / max_hosts) * 100) if max_hosts else 0
     near_limit = bool(max_hosts and license_pct >= 80)

@@ -4,7 +4,7 @@
 images:
   image:
     repository: ghcr.io/ditaknet-sudo/ditaknet
-    tag: "2.0.0"
+    tag: "2.0.1"
 
 consts:
   ditaknet_container_name: ditaknet
@@ -12,7 +12,7 @@ consts:
 TZ: Etc/UTC
 
 ditaknet:
-  image_tag: "2.0.0"
+  image_tag: "2.0.1"
   additional_envs: []
 
 network:

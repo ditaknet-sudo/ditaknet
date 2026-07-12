@@ -175,8 +175,9 @@
           <div class="small" data-error-message></div>
           <div class="small mt-1">Request ID: <code data-error-request-id>—</code></div>
           <div class="mt-2 d-flex flex-wrap gap-2">
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="location.reload()">Retry</button>
+            <button type="button" class="btn btn-sm btn-outline-danger" data-error-retry>Retry</button>
             <button type="button" class="btn btn-sm btn-outline-secondary" data-copy-request-id>Copy request ID</button>
+            <a href="/dashboard" class="btn btn-sm btn-outline-secondary" data-error-dashboard>Dashboard</a>
             <a href="/system/logs" class="btn btn-sm btn-outline-secondary">Open System Logs</a>
           </div>
         </div>

@@ -402,6 +402,32 @@ body {
 [data-bs-theme="dark"] .setup-page .setup-card {
   background: var(--dn-card-bg);
   border: 1px solid var(--dn-border);
+  color: var(--dn-text-primary);
+}
+
+[data-theme="dark"] .setup-page .usecase-card,
+[data-bs-theme="dark"] .setup-page .usecase-card {
+  background: var(--dn-surface-muted);
+  color: var(--dn-text-primary);
+  border-color: var(--dn-border) !important;
+}
+
+[data-theme="dark"] .setup-page .usecase-card strong,
+[data-bs-theme="dark"] .setup-page .usecase-card strong {
+  color: var(--dn-text-primary);
+}
+
+[data-theme="dark"] .setup-page .usecase-card .text-muted,
+[data-bs-theme="dark"] .setup-page .usecase-card .text-muted {
+  color: var(--dn-text-secondary) !important;
+}
+
+[data-theme="dark"] .setup-page .usecase-card:hover,
+[data-theme="dark"] .setup-page .usecase-card--selected,
+[data-bs-theme="dark"] .setup-page .usecase-card:hover,
+[data-bs-theme="dark"] .setup-page .usecase-card--selected {
+  border-color: var(--dn-info) !important;
+  background: color-mix(in srgb, var(--dn-info) 18%, var(--dn-surface-muted));
 }
 
 /* ============================================================

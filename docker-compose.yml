@@ -4,11 +4,11 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        APP_VERSION: ${APP_VERSION:-2.0.0}
-        IMAGE_TAG: ${IMAGE_TAG:-2.0.0}
+        APP_VERSION: ${APP_VERSION:-2.0.1}
+        IMAGE_TAG: ${IMAGE_TAG:-2.0.1}
         BUILD_COMMIT: ${BUILD_COMMIT:-}
         BUILD_DATE: ${BUILD_DATE:-}
-    image: ditaknet:${IMAGE_TAG:-2.0.0}
+    image: ditaknet:${IMAGE_TAG:-2.0.1}
     container_name: ditaknet-monitoring
     restart: unless-stopped
     env_file:

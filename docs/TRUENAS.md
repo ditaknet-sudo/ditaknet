@@ -12,7 +12,7 @@ owned by the TrueNAS system. The application listens on port `5833`.
 Publish a versioned image before installing through TrueNAS:
 
 ```text
-ghcr.io/ditaknet-sudo/ditaknet:2.0.0
+ghcr.io/ditaknet-sudo/ditaknet:2.0.1
 ```
 
 Use immutable version tags for production. Use `latest` only for testing.

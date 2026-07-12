@@ -12,7 +12,6 @@ SETUP_STEPS = (
     "language",
     "purpose",
     "admin",
-    "network",
     "subnet",
     "discovery",
     "import",
@@ -23,7 +22,8 @@ _LEGACY_STEP_MAP = {
     "package": "admin",
     "packages": "admin",
     "activate": "admin",
-    "system": "network",
+    "system": "subnet",
+    "network": "subnet",
     "license": "admin",
     "notifications": "subnet",
 }

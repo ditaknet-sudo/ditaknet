@@ -8,17 +8,23 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
+## [2.0.1] - 2026-07-12
 
-- GitHub Actions publish workflow for `ghcr.io/ditaknet-sudo/ditaknet`
-  (`v*` tags → version + `latest`)
-- TrueNAS SCALE Custom App compose templates under `truenas/`
-- TrueNAS official catalog contribution pack under `truenas-catalog/`
-- `SECURITY.md`, expanded `.env.example`, release/install docs
+### Fixed
+
+- Fixed unexpected server error handling on dashboard / API paths caused by
+  unsafe numeric coercion of legacy check and license fields
+- Improved Request ID logging so every server error writes the same
+  `req_…` id into backend logs with a full stack trace
+- Improved TrueNAS storage validation with real write probes and clear
+  per-path errors for `/app/data`, `/app/logs`, `/app/backups`, `/app/plugins`
 
 ### Changed
 
-- Hardened `.gitignore` / `.dockerignore` for runtime data and secrets
+- Upgraded GitHub Actions to Node 24-compatible action releases
+  (`checkout@v7`, `setup-buildx@v4`, `login@v4`, `build-push@v7`)
+- Added upgrade and smoke tests before GHCR publish (compile, pytest,
+  compose config, container `/health`, login page)
 
 ## [2.0.0] - 2026-07
 

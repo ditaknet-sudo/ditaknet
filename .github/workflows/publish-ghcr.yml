@@ -1,8 +1,8 @@
 name: Publish DitakNet image to GHCR
 
 # Publishes only on version tags (v*) or manual workflow_dispatch.
-# Build runs first; push runs only after a successful local build.
-# Production installs should pin a version tag (e.g. 2.0.0), not latest.
+# All quality gates must pass before any image is pushed.
+# Production installs should pin a version tag (e.g. 2.0.1), not latest.
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish without v prefix (e.g. 2.0.0)"
+        description: "Version to publish without v prefix (e.g. 2.0.1)"
         required: true
         type: string
 
@@ -23,13 +23,13 @@ env:
   IMAGE: ghcr.io/ditaknet-sudo/ditaknet
 
 jobs:
-  build-and-publish:
+  test-and-publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Resolve version
         id: ver
@@ -40,37 +40,69 @@ jobs:
           else
             V="${GITHUB_REF_NAME#v}"
           fi
-          # Strip accidental leading v
           V="${V#v}"
           if ! echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$'; then
-            echo "Invalid version: $V (expected SemVer like 2.0.0)"
+            echo "Invalid version: $V (expected SemVer like 2.0.1)"
             exit 1
           fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "Resolved DitakNet version: $V"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          python-version: "3.11"
+          cache: pip
 
-      - name: Build image (no push on failure)
-        id: build
-        uses: docker/build-push-action@v6
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Python syntax / compile check
+        run: python -m compileall -q ditaknet app
+
+      - name: Run pytest
+        env:
+          APP_ENV: development
+          DATA_DIR: ${{ runner.temp }}/ditaknet-data
+          LOG_DIR: ${{ runner.temp }}/ditaknet-logs
+          BACKUP_DIR: ${{ runner.temp }}/ditaknet-backups
+          PLUGIN_DIR: ${{ runner.temp }}/ditaknet-plugins
+        run: |
+          mkdir -p "$DATA_DIR" "$LOG_DIR" "$BACKUP_DIR" "$PLUGIN_DIR"
+          pytest -q
+
+      - name: Validate TrueNAS compose files
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/dn/{data,logs,backups,plugins}
+          cat > /tmp/dn.env <<EOF
+          DITAKNET_VERSION=${{ steps.ver.outputs.version }}
+          DITAKNET_DATA_PATH=/tmp/dn/data
+          DITAKNET_LOGS_PATH=/tmp/dn/logs
+          DITAKNET_BACKUPS_PATH=/tmp/dn/backups
+          DITAKNET_PLUGINS_PATH=/tmp/dn/plugins
+          EOF
+          docker compose --env-file /tmp/dn.env -f truenas/docker-compose.yml config >/dev/null
+          docker compose --env-file /tmp/dn.env -f truenas/docker-compose.host-network.yml config >/dev/null
+          ! grep -E '^\s*build:' truenas/docker-compose.yml truenas/docker-compose.host-network.yml
+          ! grep -E '^\s*ports:' truenas/docker-compose.host-network.yml
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build image (no push yet)
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
-          # load locally first — if this step fails, nothing is published
           push: false
           load: true
           tags: |
             ${{ env.IMAGE }}:${{ steps.ver.outputs.version }}
-            ${{ env.IMAGE }}:latest
+            ditaknet:ci-local
           build-args: |
             APP_VERSION=${{ steps.ver.outputs.version }}
             IMAGE_TAG=${{ steps.ver.outputs.version }}
@@ -79,9 +111,52 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Push versioned tag and latest
+      - name: Container startup + /health + web smoke
         run: |
           set -euo pipefail
+          DATA="${{ runner.temp }}/smoke-data"
+          LOGS="${{ runner.temp }}/smoke-logs"
+          BACKUPS="${{ runner.temp }}/smoke-backups"
+          PLUGINS="${{ runner.temp }}/smoke-plugins"
+          mkdir -p "$DATA" "$LOGS" "$BACKUPS" "$PLUGINS"
+          docker rm -f ditaknet-ci-smoke >/dev/null 2>&1 || true
+          docker run -d --name ditaknet-ci-smoke \
+            -p 5833:5833 \
+            --cap-add NET_RAW \
+            -e APP_ENV=production \
+            -e APP_VERSION=${{ steps.ver.outputs.version }} \
+            -e IMAGE_TAG=${{ steps.ver.outputs.version }} \
+            -v "$DATA:/app/data" \
+            -v "$LOGS:/app/logs" \
+            -v "$BACKUPS:/app/backups" \
+            -v "$PLUGINS:/app/plugins" \
+            ditaknet:ci-local
+          for i in $(seq 1 40); do
+            if curl -fsS "http://127.0.0.1:5833/health" | tee /tmp/health.json; then
+              break
+            fi
+            sleep 2
+          done
+          grep -q '"status":"healthy"' /tmp/health.json
+          curl -fsS -o /tmp/login.html -w "%{http_code}" "http://127.0.0.1:5833/login" | grep -E '200|302|303'
+          # Confirm Request ID appears when forcing an internal error path via Accept JSON
+          CODE=$(curl -sS -o /tmp/err.json -w "%{http_code}" \
+            -H "Accept: application/json" \
+            "http://127.0.0.1:5833/api/__ditaknet_force_error_for_ci__" || true)
+          # Endpoint may 404 — that is fine. Health + login are required gates.
+          docker rm -f ditaknet-ci-smoke >/dev/null 2>&1 || true
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag latest and push (only after tests passed)
+        run: |
+          set -euo pipefail
+          docker tag "${{ env.IMAGE }}:${{ steps.ver.outputs.version }}" "${{ env.IMAGE }}:latest"
           docker push "${{ env.IMAGE }}:${{ steps.ver.outputs.version }}"
           docker push "${{ env.IMAGE }}:latest"
           echo "Published:"
@@ -96,5 +171,4 @@ jobs:
             echo "- Version: \`${{ steps.ver.outputs.version }}\`"
             echo "- Image: \`${{ env.IMAGE }}:${{ steps.ver.outputs.version }}\`"
             echo "- Also tagged: \`${{ env.IMAGE }}:latest\` (testing only)"
-            echo "- Production TrueNAS installs should pin the version tag."
           } >> "$GITHUB_STEP_SUMMARY"

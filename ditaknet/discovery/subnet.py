@@ -75,14 +75,15 @@ def subnet_within(candidate: str, allowed: str) -> bool:
 
 
 def is_private_subnet(cidr: str) -> bool:
-    """Return True when *cidr* is a private network (RFC1918 / link-local)."""
+    """Return True when *cidr* is a private network (RFC1918 / link-local).
+
+    Any private prefix length is accepted (/8 … /32), including single-host /32.
+    """
     try:
         network = ipaddress.ip_network(cidr, strict=False)
     except ValueError:
         return False
-    if network.num_addresses <= 2 and network.version == 4:
-        return False
-    return network.is_private
+    return bool(network.is_private)
 
 
 def is_cgnat_subnet(cidr: str) -> bool:
@@ -109,6 +110,8 @@ def suggest_subnet_for_type(network_type: str, local_subnets: list[str]) -> str:
 def subnet_host_count(cidr: str) -> int:
     """Count usable host addresses in a CIDR (for license limits)."""
     network = ipaddress.ip_network(cidr, strict=False)
+    if network.version == 4 and network.prefixlen >= 31:
+        return network.num_addresses
     if network.version == 4:
         return max(network.num_addresses - 2, 0)
     return network.num_addresses
@@ -142,8 +145,15 @@ def detect_local_subnets() -> list[str]:
 
 
 def iter_hosts(cidr: str) -> Iterable[str]:
-    """Yield host IPs in *cidr* (skips network/broadcast on IPv4)."""
+    """Yield host IPs in *cidr* (skips network/broadcast on typical IPv4 LANs).
+
+    /31 and /32 include every address in the network so single-host CIDRs scan.
+    """
     network = ipaddress.ip_network(cidr, strict=False)
+    if network.version == 4 and network.prefixlen >= 31:
+        for addr in network:
+            yield str(addr)
+        return
     for host in network.hosts():
         yield str(host)
 

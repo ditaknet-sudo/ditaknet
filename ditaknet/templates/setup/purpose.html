@@ -23,8 +23,25 @@
 </form>
 
 <style>
-.usecase-card { background: var(--bs-white, #fff); }
-.usecase-card:hover { border-color: #0d6efd !important; background: #f0f5ff; }
-.usecase-card--selected { border-color: #0d6efd !important; background: #f0f5ff; }
+.usecase-card {
+  background: var(--dn-surface);
+  color: var(--dn-text-primary);
+  border-color: var(--dn-border) !important;
+}
+.usecase-card strong { color: var(--dn-text-primary); }
+.usecase-card .text-muted { color: var(--dn-text-secondary) !important; }
+.usecase-card:hover,
+.usecase-card--selected {
+  border-color: var(--dn-info) !important;
+  background: color-mix(in srgb, var(--dn-info) 14%, var(--dn-surface));
+}
+.usecase-card .form-check-input {
+  background-color: var(--dn-input-bg);
+  border-color: var(--dn-input-border);
+}
+.usecase-card .form-check-input:checked {
+  background-color: var(--dn-info);
+  border-color: var(--dn-info);
+}
 </style>
 {% endblock %}

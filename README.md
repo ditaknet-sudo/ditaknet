@@ -44,11 +44,11 @@ exports.
 
 ## Version and updates
 
-Current app version: **2.0.0**.
+Current app version: **2.0.1**.
 
 - Pushing code to GitHub does **not** auto-update running customer servers.
-- Publish a tagged image (`v2.0.0`) via `.github/workflows/publish-ghcr.yml` to
-  `ghcr.io/ditaknet-sudo/ditaknet:2.0.0` (and `:latest` for testing only).
+- Publish a tagged image (`v2.0.1`) via `.github/workflows/publish-ghcr.yml` to
+  `ghcr.io/ditaknet-sudo/ditaknet:2.0.1` (and `:latest` for testing only).
 - Publish `update-manifest.json` and set `APP_UPDATE_CHECK_URL` so admins see “Update available”.
 - Customers apply updates with Docker pull / TrueNAS Update (manual; backup first).
 

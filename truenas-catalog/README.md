@@ -36,7 +36,7 @@ truenas-catalog/
 ## Before opening a PR to truenas/apps
 
 1. Publish at least one stable image:
-   `ghcr.io/ditaknet-sudo/ditaknet:2.0.0` (and keep the package **public**).
+   `ghcr.io/ditaknet-sudo/ditaknet:2.0.1` (and keep the package **public**).
 2. Fork `https://github.com/truenas/apps`.
 3. Copy `ix-dev/community/ditaknet/` into your fork under the same path.
 4. Upload a final icon to TrueNAS media (or follow current maintainer guidance)

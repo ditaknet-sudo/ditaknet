@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from ditaknet.config import settings
 from ditaknet.utils.paths import directory_status, ensure_directory
+from loguru import logger
 
 
 WEAK_PASSWORDS = frozenset({"", "change-me", "changeme", "admin", "password"})
@@ -51,22 +52,38 @@ def validate_production_settings() -> None:
 
 
 def prepare_runtime_directories() -> dict:
-    """Ensure data/backup/log directories exist and report writability."""
+    """Ensure data/backup/log/plugin directories exist and report writability."""
     data_dir = ensure_directory(settings.data_dir_path)
     backup_dir = ensure_directory(settings.backup_dir_path)
     log_dir = ensure_directory(settings.log_dir_path)
+    plugin_dir = ensure_directory(settings.plugin_dir_path)
     ensure_directory(settings.db_path.parent)
 
     return {
         "data": directory_status(data_dir),
-        "backups": directory_status(backup_dir),
         "logs": directory_status(log_dir),
+        "backups": directory_status(backup_dir),
+        "plugins": directory_status(plugin_dir),
     }
 
 
 def validate_writable_directories(status: dict) -> None:
-    """Raise if required directories are not writable."""
+    """Raise if required directories are not writable. Log the exact path."""
     failures = [name for name, info in status.items() if not info.get("ok")]
+    for name, info in status.items():
+        if info.get("ok"):
+            logger.info("Runtime directory OK: {} -> {}", name, info.get("path"))
+        else:
+            logger.error(
+                "Runtime directory FAILED: {} -> {} ({})",
+                name,
+                info.get("path"),
+                info.get("error") or "missing or not writable",
+            )
     if failures:
-        details = ", ".join(f"{name}={status[name]['path']}" for name in failures)
+        details = ", ".join(
+            f"{name}={status[name]['path']}"
+            + (f" [{status[name].get('error')}]" if status[name].get("error") else "")
+            for name in failures
+        )
         raise StartupError(f"Required directories are missing or not writable: {details}")

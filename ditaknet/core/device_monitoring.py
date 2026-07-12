@@ -79,8 +79,21 @@ def uptime_percent(rows: list[dict[str, Any]]) -> float | None:
     return round(100.0 * ok_count / len(rows), 2)
 
 
+def _safe_float(value: Any, default: float | None = None) -> float | None:
+    if value is None or value == "":
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def average_response_ms(rows: list[dict[str, Any]]) -> float | None:
-    values = [float(r["response_time_ms"]) for r in rows if r.get("response_time_ms") is not None]
+    values = [
+        ms
+        for ms in (_safe_float(r.get("response_time_ms")) for r in rows)
+        if ms is not None
+    ]
     if not values:
         return None
     return round(sum(values) / len(values), 2)

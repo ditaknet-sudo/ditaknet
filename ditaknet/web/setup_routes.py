@@ -12,7 +12,6 @@ from ditaknet.core.licensing import LicenseLimitError, license_service
 from ditaknet.core.setup_state import (
     SETUP_STEPS,
     complete_setup,
-    get_network_plan,
     get_setup_scan_id,
     get_setup_step,
     get_setup_subnet,
@@ -20,7 +19,6 @@ from ditaknet.core.setup_state import (
     save_default_language,
     save_imported_count,
     save_monitoring_use_case,
-    save_network_plan,
     save_setup_scan_id,
     save_setup_subnet,
     save_system_name,
@@ -33,8 +31,6 @@ from ditaknet.discovery.subnet import (
     detect_local_subnets,
     is_cgnat_subnet,
     normalize_subnets,
-    pick_primary_subnet,
-    suggest_subnet_for_type,
 )
 from ditaknet.i18n import language_label, supported_languages, translate
 from ditaknet.security import AuthenticatedUser, hash_password
@@ -44,6 +40,16 @@ router = APIRouter(include_in_schema=False)
 
 STEPS = list(SETUP_STEPS)
 LANGUAGE_LABELS = {code: language_label(code) for code in supported_languages()}
+
+
+def _parse_subnet_input(raw: str) -> list[str]:
+    """Split free-form CIDR input on commas, semicolons, or whitespace."""
+    parts: list[str] = []
+    for chunk in raw.replace(",", " ").replace(";", " ").split():
+        value = chunk.strip()
+        if value:
+            parts.append(value)
+    return parts
 
 
 def _license_error_message(exc: Exception, lang: str) -> str:
@@ -177,34 +183,16 @@ async def setup_admin_post(
     await save_system_name(system_name.strip() or "DitakNet")
     request.session["user"] = username.strip()
     request.session["role"] = "admin"
-    await set_setup_step("network")
-    return RedirectResponse(url="/setup/network", status_code=303)
+    await set_setup_step("subnet")
+    return RedirectResponse(url="/setup/subnet", status_code=303)
 
 
 @router.get("/setup/network", response_class=HTMLResponse)
-async def setup_network_get(request: Request):
+@router.post("/setup/network")
+async def setup_network_retired(request: Request):
+    """Legacy planning step removed — user enters CIDRs on /setup/subnet."""
     if redirect := await _guard_setup(request):
         return redirect
-    plan = await get_network_plan()
-    return render_template(
-        request,
-        "setup/network.html",
-        _ctx(request, step="network", plan=plan, license=await license_service.status()),
-    )
-
-
-@router.post("/setup/network")
-async def setup_network_post(
-    request: Request,
-    network_count: str = Form("1"),
-    device_count: str = Form("100"),
-    network_type: str = Form("192.168"),
-):
-    await save_network_plan(
-        network_count=network_count,
-        device_count=device_count,
-        network_type=network_type,
-    )
     await set_setup_step("subnet")
     return RedirectResponse(url="/setup/subnet", status_code=303)
 
@@ -213,19 +201,14 @@ async def setup_network_post(
 async def setup_subnet_get(request: Request):
     if redirect := await _guard_setup(request):
         return redirect
-    local_subnets = detect_local_subnets()
-    plan = await get_network_plan()
-    suggested = suggest_subnet_for_type(plan.get("network_type", "192.168"), local_subnets)
-    saved = await get_setup_subnet()
     return render_template(
         request,
         "setup/subnet.html",
         _ctx(
             request,
             step="subnet",
-            local_subnets=local_subnets,
-            selected_subnet=saved or suggested,
-            license=await license_service.status(),
+            local_subnets=detect_local_subnets(),
+            selected_subnet=await get_setup_subnet(),
         ),
     )
 
@@ -238,17 +221,13 @@ async def setup_subnet_post(
 ):
     lang = request.session.get("lang", "en")
     local_subnets = detect_local_subnets()
-    subnet_list: list[str] = []
 
     if action == "skip":
         await set_setup_step("finish")
         return RedirectResponse(url="/setup/finish", status_code=303)
 
-    if action in {"detect", "scan_detected"} and local_subnets:
-        subnet_list = [pick_primary_subnet(local_subnets)]
-    elif subnets.strip():
-        subnet_list = [s.strip() for s in subnets.split(",") if s.strip()]
-    else:
+    subnet_list = _parse_subnet_input(subnets)
+    if not subnet_list:
         return render_template(
             request,
             "setup/subnet.html",
@@ -257,7 +236,6 @@ async def setup_subnet_post(
                 step="subnet",
                 local_subnets=local_subnets,
                 selected_subnet=subnets,
-                license=await license_service.status(),
                 error=translate("setup.subnet.required", lang),
             ),
             status_code=400,
@@ -267,7 +245,7 @@ async def setup_subnet_post(
         normalized = normalize_subnets(subnet_list)
         if not normalized:
             raise ValueError(translate("setup.subnet.required", lang))
-        if is_cgnat_subnet(normalized[0]):
+        if any(is_cgnat_subnet(item) for item in normalized):
             raise ValueError(translate("setup.subnet.cgnat_warning", lang))
         await license_service.enforce_discovery_scan(normalized)
         await save_setup_subnet(normalized[0])
@@ -285,8 +263,7 @@ async def setup_subnet_post(
                 request,
                 step="subnet",
                 local_subnets=local_subnets,
-                selected_subnet=subnet_list[0] if subnet_list else subnets,
-                license=await license_service.status(),
+                selected_subnet=subnets.strip(),
                 error=_license_error_message(exc, lang),
             ),
             status_code=400,
@@ -424,12 +401,12 @@ async def setup_finish_post(request: Request):
 # Legacy routes — redirect to the new flow
 @router.get("/setup/system", response_class=HTMLResponse)
 async def setup_system_legacy(request: Request):
-    return RedirectResponse(url="/setup/network", status_code=303)
+    return RedirectResponse(url="/setup/subnet", status_code=303)
 
 
 @router.post("/setup/system")
 async def setup_system_legacy_post(request: Request):
-    return RedirectResponse(url="/setup/network", status_code=303)
+    return RedirectResponse(url="/setup/subnet", status_code=303)
 
 
 @router.get("/setup/notifications", response_class=HTMLResponse)

@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     app_host: str = Field(default="0.0.0.0", validation_alias="APP_HOST")
     app_port: int = Field(default=5833, validation_alias="APP_PORT")
     app_base_url: str = Field(default="http://localhost:5833", validation_alias="APP_BASE_URL")
-    app_version: str = Field(default="2.0.0", validation_alias="APP_VERSION")
+    app_version: str = Field(default="2.0.1", validation_alias="APP_VERSION")
     build_commit: str = Field(
         default="",
         validation_alias=AliasChoices("BUILD_COMMIT", "APP_BUILD_COMMIT", "GIT_COMMIT"),
@@ -148,7 +148,7 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
 
     # ── Plugin System ─────────────────────────────────────
-    plugin_dir: str = "plugins"
+    plugin_dir: str = Field(default="plugins", validation_alias="PLUGIN_DIR")
 
     # ── Web Dashboard / Auth ──────────────────────────────
     admin_username: str = Field(default="admin", validation_alias="ADMIN_USERNAME")
@@ -265,6 +265,10 @@ class Settings(BaseSettings):
     @property
     def log_dir_path(self) -> Path:
         return Path(self.log_dir).expanduser().resolve()
+
+    @property
+    def plugin_dir_path(self) -> Path:
+        return Path(self.plugin_dir).expanduser().resolve()
 
     @property
     def telegram_enabled(self) -> bool:

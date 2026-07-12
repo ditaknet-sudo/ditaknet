@@ -8,10 +8,12 @@
     if (!host) return;
     host.classList.remove("d-none");
     var msgEl = host.querySelector("[data-error-message]");
-    if (msgEl) msgEl.textContent = message || "Something went wrong.";
+    if (msgEl) msgEl.textContent = message || "Unexpected server error";
     var ridEl = host.querySelector("[data-error-request-id]");
     if (ridEl) ridEl.textContent = requestId || "—";
   }
+
+  var lastFailedRequest = null;
 
   window.ditaknetFetch = async function (url, options) {
     options = options || {};
@@ -27,6 +29,10 @@
       var message =
         (payload && (payload.message || payload.detail)) ||
         ("Request failed (" + resp.status + ")");
+      if (typeof message !== "string") {
+        message = "Unexpected server error";
+      }
+      lastFailedRequest = { url: url, options: options };
       showGlobalError(message, requestId);
       var error = new Error(message);
       error.status = resp.status;
@@ -36,6 +42,16 @@
     }
     return resp;
   };
+
+  document.querySelectorAll("[data-error-retry]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (lastFailedRequest && typeof window.ditaknetFetch === "function") {
+        window.ditaknetFetch(lastFailedRequest.url, lastFailedRequest.options).catch(function () {});
+        return;
+      }
+      window.location.reload();
+    });
+  });
 
   document.querySelectorAll("[data-copy-request-id]").forEach(function (btn) {
     btn.addEventListener("click", function () {

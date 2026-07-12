@@ -6,7 +6,7 @@ Use a **published** image from GHCR — no local source build required.
 Recommended image tag for production:
 
 ```text
-ghcr.io/ditaknet-sudo/ditaknet:2.0.0
+ghcr.io/ditaknet-sudo/ditaknet:2.0.1
 ```
 
 Use `:latest` only for testing.
@@ -59,7 +59,7 @@ discovery cannot see LAN devices.
 4. Set environment variables (or a `.env` based on `truenas/.env.example`):
 
 ```text
-DITAKNET_VERSION=2.0.0
+DITAKNET_VERSION=2.0.1
 DITAKNET_DATA_PATH=/mnt/tank/apps/ditaknet/data
 DITAKNET_LOGS_PATH=/mnt/tank/apps/ditaknet/logs
 DITAKNET_BACKUPS_PATH=/mnt/tank/apps/ditaknet/backups
@@ -106,8 +106,8 @@ curl -sS http://127.0.0.1:5833/health
 
 Do **not** rely on `:latest` for production.
 
-GitHub releases use tags like `v2.0.0`. The image tag is the same number
-**without** the `v` prefix (`2.0.0`).
+GitHub releases use tags like `v2.0.1`. The image tag is the same number
+**without** the `v` prefix (`2.0.1`).
 
 ---
 

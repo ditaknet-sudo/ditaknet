@@ -6,7 +6,7 @@
 #
 # 1) Copy truenas/.env.example → .env next to this file (or set vars in UI)
 # 2) Adjust DITAKNET_*_PATH to your pool datasets
-# 3) Pin DITAKNET_VERSION to a release (e.g. 2.0.0). Use latest only for tests.
+# 3) Pin DITAKNET_VERSION to a release (e.g. 2.0.1). Use latest only for tests.
 #
 # For better LAN discovery / ARP visibility, prefer:
 #   docker-compose.host-network.yml

@@ -67,22 +67,25 @@ def _safe_exception_location(exc: BaseException) -> str | None:
 
 
 def log_route_exception(request: Request, exc: Exception, *, status_code: int = 500) -> str:
-    """Log sanitized traceback; return request_id."""
+    """Log full exception with Request ID in the message body (searchable in files)."""
     request_id = get_request_id(request)
     user = _user_label(request)
     safe_message = redact_text(str(exc))
+    # Put request_id in the message so rotating file logs are greppable even when
+    # format strings omit bound extras.
     logger.bind(
         request_id=request_id,
-        path=request.url.path,
+        path=str(request.url.path),
         method=request.method,
         user=user or "anonymous",
         status_code=status_code,
         exception_type=type(exc).__name__,
-    ).exception(
-        "Route error [{}] {} {} — {}",
+    ).opt(exception=exc).error(
+        "Route error [{}] {} {} — {}: {}",
         request_id,
         request.method,
         request.url.path,
+        type(exc).__name__,
         safe_message,
     )
     return request_id
@@ -90,13 +93,10 @@ def log_route_exception(request: Request, exc: Exception, *, status_code: int = 
 
 def build_internal_error_payload(request: Request, exc: Exception) -> dict[str, Any]:
     request_id = log_route_exception(request, exc)
+    # User-facing text stays non-secret. Full traceback lives only in server logs.
     payload: dict[str, Any] = {
         "error": "internal_server_error",
-        "message": (
-            "Something went wrong. Please contact support with this request ID."
-            if settings.is_production
-            else "Unexpected server error."
-        ),
+        "message": "Unexpected server error",
         "request_id": request_id,
     }
     if settings.is_development:
@@ -116,17 +116,28 @@ def build_http_error_payload(request: Request, exc: StarletteHTTPException) -> d
         payload = {"error": "validation_error", "detail": detail}
     else:
         payload = {"error": "http_error", "message": str(detail)}
-    if exc.status_code >= 500:
-        payload.setdefault("request_id", get_request_id(request))
+    payload.setdefault("request_id", get_request_id(request))
+    if exc.status_code >= 500 and "message" not in payload:
+        payload["message"] = "Unexpected server error"
     return payload
 
 
-def _html_error_page(request_id: str, message: str, *, is_admin: bool = False) -> str:
+def _html_error_page(
+    request_id: str,
+    message: str,
+    *,
+    is_admin: bool = False,
+    path: str = "/",
+) -> str:
     logs_link = ""
     if is_admin:
         logs_link = (
             '<a class="btn btn-sm btn-outline-secondary" href="/system/logs">Open System Logs</a> '
         )
+    # Avoid error loops: if the failure was already on /dashboard, offer Devices first.
+    dashboard_href = "/devices" if path.rstrip("/") in {"", "/dashboard"} else "/dashboard"
+    dashboard_label = "Devices" if dashboard_href == "/devices" else "Dashboard"
+    safe_path = path.replace('"', "")
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="light" data-bs-theme="light"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DitakNet — Error</title>
@@ -142,14 +153,29 @@ def _html_error_page(request_id: str, message: str, *, is_admin: bool = False) -
       <p class="text-muted mb-3">{message}</p>
       <div class="alert alert-light border small font-monospace mb-3">Request ID: <span id="error-request-id">{request_id}</span></div>
       <div class="d-flex flex-wrap gap-2">
-        <button type="button" class="btn btn-sm btn-primary" onclick="location.reload()">Retry</button>
+        <button type="button" class="btn btn-sm btn-primary" id="error-retry-btn">Retry</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('error-request-id').textContent)">Copy request ID</button>
         {logs_link}
-        <a class="btn btn-sm btn-outline-secondary" href="/dashboard">Dashboard</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{dashboard_href}">{dashboard_label}</a>
       </div>
     </div>
   </div>
 </div>
+<script>
+(function() {{
+  var btn = document.getElementById("error-retry-btn");
+  if (!btn) return;
+  btn.addEventListener("click", function () {{
+    // Re-issue the original navigation (works for GET page loads).
+    var target = {safe_path!r} || window.location.pathname;
+    if (window.location.pathname === target) {{
+      window.location.reload();
+    }} else {{
+      window.location.assign(target);
+    }}
+  }});
+}})();
+</script>
 </body></html>"""
 
 
@@ -158,7 +184,35 @@ def install_request_id_middleware(app: FastAPI) -> None:
     async def assign_request_id(request: Request, call_next):
         request_id = request.headers.get(REQUEST_ID_HEADER) or f"req_{uuid.uuid4().hex[:12]}"
         request.state.request_id = request_id
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except StarletteHTTPException:
+            raise
+        except Exception as exc:
+            # Guarantee Request ID + stack are logged even if an outer layer mis-handles.
+            log_route_exception(request, exc)
+            payload = {
+                "error": "internal_server_error",
+                "message": "Unexpected server error",
+                "request_id": request_id,
+            }
+            if _wants_html(request):
+                is_admin = (_user_label(request) or "") == getattr(settings, "admin_username", "admin")
+                return HTMLResponse(
+                    _html_error_page(
+                        request_id,
+                        payload["message"],
+                        is_admin=is_admin,
+                        path=str(request.url.path),
+                    ),
+                    status_code=500,
+                    headers={REQUEST_ID_HEADER: request_id},
+                )
+            return JSONResponse(
+                status_code=500,
+                content=payload,
+                headers={REQUEST_ID_HEADER: request_id},
+            )
         response.headers[REQUEST_ID_HEADER] = request_id
         return response
 
@@ -170,7 +224,9 @@ def install_asyncio_exception_handler() -> None:
         exc = context.get("exception")
         message = context.get("message", "asyncio error")
         if exc is not None:
-            logger.error("Asyncio loop error ({}): {}", message, redact_text(str(exc)))
+            logger.opt(exception=exc).error(
+                "Asyncio loop error ({}): {}", message, redact_text(str(exc))
+            )
         else:
             logger.error("Asyncio loop error: {}", message)
 
@@ -191,7 +247,9 @@ def create_background_task(coro, *, name: str | None = None) -> asyncio.Task:
         if exc is None:
             return
         task_name = task.get_name() or "background-task"
-        logger.error("Background task '{}' failed: {}", task_name, redact_text(str(exc)))
+        logger.opt(exception=exc).error(
+            "Background task '{}' failed: {}", task_name, redact_text(str(exc))
+        )
 
     task = asyncio.create_task(coro, name=name)
     task.add_done_callback(_log_task_result)
@@ -209,14 +267,22 @@ def install_fastapi_exception_handlers(app: FastAPI) -> None:
             if location:
                 return RedirectResponse(url=location, status_code=exc.status_code, headers=headers)
 
+        request_id = get_request_id(request)
         if exc.status_code >= 500:
             logger.bind(
-                request_id=get_request_id(request),
-                path=request.url.path,
+                request_id=request_id,
+                path=str(request.url.path),
                 method=request.method,
                 user=_user_label(request) or "anonymous",
                 status_code=exc.status_code,
-            ).error("HTTP {} on {} {}", exc.status_code, request.method, request.url.path)
+            ).error(
+                "HTTP {} [{}] on {} {} — {}",
+                exc.status_code,
+                request_id,
+                request.method,
+                request.url.path,
+                redact_text(str(exc.detail)),
+            )
 
         payload = build_http_error_payload(request, exc)
         if _wants_html(request) and exc.status_code >= 400:
@@ -231,16 +297,26 @@ def install_fastapi_exception_handlers(app: FastAPI) -> None:
                 422: "Validation Error",
                 429: "Too Many Requests",
             }
-            title = title_map.get(exc.status_code, "Error") if exc.status_code < 500 else "Something went wrong"
+            title = (
+                title_map.get(exc.status_code, "Error")
+                if exc.status_code < 500
+                else "Unexpected server error"
+            )
             return HTMLResponse(
                 _html_error_page(
-                    payload.get("request_id", get_request_id(request)),
+                    payload.get("request_id", request_id),
                     str(payload.get("message") or title),
                     is_admin=is_admin,
+                    path=str(request.url.path),
                 ),
                 status_code=exc.status_code,
+                headers={REQUEST_ID_HEADER: payload.get("request_id", request_id)},
             )
-        return JSONResponse(status_code=exc.status_code, content=payload)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=payload,
+            headers={REQUEST_ID_HEADER: payload.get("request_id", request_id)},
+        )
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
@@ -248,7 +324,12 @@ def install_fastapi_exception_handlers(app: FastAPI) -> None:
         if _wants_html(request):
             is_admin = (_user_label(request) or "") == getattr(settings, "admin_username", "admin")
             return HTMLResponse(
-                _html_error_page(payload["request_id"], payload["message"], is_admin=is_admin),
+                _html_error_page(
+                    payload["request_id"],
+                    payload["message"],
+                    is_admin=is_admin,
+                    path=str(request.url.path),
+                ),
                 status_code=500,
                 headers={REQUEST_ID_HEADER: payload["request_id"]},
             )

@@ -40,7 +40,7 @@ templates = Jinja2Templates(directory=templates_dir)
 
 router = APIRouter(include_in_schema=False, dependencies=[Depends(verify_web_csrf)])
 
-STATIC_ASSET_BUILD = "20260712darkfix"
+STATIC_ASSET_BUILD = "20260712subnet"
 
 def format_datetime(value):
     if not value:

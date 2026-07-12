@@ -81,11 +81,20 @@ async def _dashboard_setup_state() -> dict[str, Any]:
         "telegram_on": telegram_on,
         "has_backup": has_backup,
         "license_tier": tier,
-        "license_near_limit": bool(
-            license_status.get("max_hosts")
-            and license_status.get("used_hosts", 0) >= license_status["max_hosts"] * 0.8
-        ),
+        "license_near_limit": _license_near_limit(license_status),
     }
+
+
+def _license_near_limit(license_status: dict) -> bool:
+    raw_max = license_status.get("max_hosts")
+    try:
+        max_hosts = int(raw_max) if raw_max not in (None, "") else None
+    except (TypeError, ValueError):
+        return False
+    if not max_hosts or max_hosts <= 0:
+        return False
+    used = int(license_status.get("used_hosts") or 0)
+    return used >= max_hosts * 0.8
 
 
 def _action(
