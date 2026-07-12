@@ -1,0 +1,60 @@
+{% extends "setup/base.html" %}
+{% block setup_card_width %}820px{% endblock %}
+{% block setup_content %}
+<h1 class="h4">Choose the subnet to scan</h1>
+<p class="text-muted">
+  DitakNet scans private networks only. Confirm a detected local subnet or enter an authorized
+  CIDR manually, such as <code>192.168.1.0/24</code>.
+</p>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+{% if license %}
+<div class="alert alert-light border small">
+  <div class="fw-semibold">{{ t('license.complimentary.badge') }}</div>
+  <div>Subnets: {{ license.used_subnets }} / {{ license.max_vlans_or_networks or license.max_discovery_subnets or t('license.unlimited') }}</div>
+  <div>Hosts: {{ license.used_hosts }} / {{ license.max_hosts or t('license.unlimited') }}</div>
+</div>
+{% endif %}
+
+{% if local_subnets %}
+<section class="mb-4">
+  <h2 class="h6">{{ t('setup.discovery.detected_network') }}</h2>
+  <div class="list-group">
+    {% for subnet in local_subnets %}
+    <form method="post" class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <input type="hidden" name="action" value="scan_detected">
+      <input type="hidden" name="subnets" value="{{ subnet }}">
+      <div>
+        <div class="font-monospace fw-semibold">{{ subnet }}</div>
+        <div class="small text-muted">Detected from the server network interfaces.</div>
+      </div>
+      <button class="btn btn-outline-primary btn-sm">{{ t('setup.discovery.scan_detected') }}</button>
+    </form>
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<div class="alert alert-warning">{{ t('setup.discovery.no_subnet') }}</div>
+{% endif %}
+
+<form method="post" class="mb-3">
+  <label class="form-label" for="subnets">{{ t('setup.discovery.manual_subnet') }}</label>
+  <input class="form-control font-monospace" id="subnets" name="subnets" value="{{ selected_subnet or '' }}" placeholder="192.168.1.0/24" required>
+  <div class="form-text">Use a private subnet you own or administer. Public internet ranges are rejected.</div>
+  <div class="d-flex gap-2 flex-wrap mt-3">
+    <button class="btn btn-primary" name="action" value="scan">{{ t('discovery.start_quick_scan') }}</button>
+    {% if local_subnets %}
+    <button class="btn btn-outline-secondary" name="action" value="detect">{{ t('setup.discovery.detected_network') }}</button>
+    {% endif %}
+    <button class="btn btn-link" name="action" value="skip" formnovalidate>{{ t('setup.discovery.skip') }}</button>
+  </div>
+</form>
+
+<p class="small text-muted mb-0">
+  Container networking can hide the host LAN. If no local subnet appears, enter the subnet manually
+  or run DitakNet with host networking when appropriate for your Docker or TrueNAS deployment.
+</p>
+{% endblock %}

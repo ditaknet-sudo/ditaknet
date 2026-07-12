@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}{% if host and host.id %}Edit Host{% else %}Add Host{% endif %}{% endblock %}
+
+{% block header %}
+<div class="d-flex align-items-center">
+    <a href="{% if host and host.id %}/hosts/{{ host.id }}{% else %}/hosts{% endif %}" class="btn btn-sm btn-link text-decoration-none p-0 me-3">
+        <i class="bi bi-arrow-left fs-4"></i>
+    </a>
+    {% if host and host.id %}Edit Host: {{ host.name }}{% else %}Add Host{% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm border-0" style="max-width: 600px;">
+    <div class="card-body p-4">
+        {% if error %}<div class="alert alert-danger alert-important">{{ error }}</div>{% endif %}
+        <form method="POST" action="{% if host and host.id %}/hosts/{{ host.id }}/edit{% else %}/hosts/new{% endif %}">
+            <div class="mb-3">
+                <label for="name" class="form-label fw-bold">Host Name</label>
+                <input type="text" class="form-control" id="name" name="name" value="{{ host.name if host else '' }}" required placeholder="e.g. Web Server 01">
+                <div class="form-text">A friendly name for this host.</div>
+            </div>
+
+            <div class="mb-4">
+                <label for="address" class="form-label fw-bold">Address / IP</label>
+                <input type="text" class="form-control font-monospace" id="address" name="address" value="{{ host.address if host else '' }}" required placeholder="e.g. 192.168.1.10">
+                <div class="form-text">IP address or hostname used for checks.</div>
+            </div>
+            
+            <div class="mb-3">
+                <label for="host_type" class="form-label fw-bold">Host Type</label>
+                <input type="text" class="form-control" id="host_type" name="host_type" list="host_type_options" value="{{ host.host_type if host else 'server' }}" placeholder="e.g. server, router">
+                <datalist id="host_type_options">
+                    <option value="server">
+                    <option value="router">
+                    <option value="switch">
+                    <option value="firewall">
+                    <option value="storage">
+                    <option value="endpoint">
+                    <option value="printer">
+                    <option value="camera">
+                </datalist>
+            </div>
+
+            <div class="mb-3">
+                <label for="location" class="form-label fw-bold">Location</label>
+                <input type="text" class="form-control" id="location" name="location" value="{{ host.location if host else '' }}" placeholder="e.g. Datacenter 1">
+            </div>
+
+            <div class="mb-4">
+                <label for="tags" class="form-label fw-bold">Tags</label>
+                <input type="text" class="form-control" id="tags" name="tags" value="{{ host.tags if host else '' }}" placeholder="e.g. web, production">
+                <div class="form-text">Comma-separated tags.</div>
+            </div>
+
+            <div class="mb-4 form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="enabled" name="enabled" value="true" {% if not host or host.enabled %}checked{% endif %}>
+                <label class="form-check-label fw-bold" for="enabled">Host Enabled</label>
+                <div class="form-text">Disabled hosts will bypass all scheduled checks for attached services.</div>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
+                <a href="{% if host and host.id %}/hosts/{{ host.id }}{% else %}/hosts{% endif %}" class="btn btn-light">Cancel</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i> {% if host and host.id %}Save Changes{% else %}Create Host{% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,100 @@
+name: Publish DitakNet image to GHCR
+
+# Publishes only on version tags (v*) or manual workflow_dispatch.
+# Build runs first; push runs only after a successful local build.
+# Production installs should pin a version tag (e.g. 2.0.0), not latest.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish without v prefix (e.g. 2.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/ditaknet-sudo/ditaknet
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            V="${{ inputs.version }}"
+          else
+            V="${GITHUB_REF_NAME#v}"
+          fi
+          # Strip accidental leading v
+          V="${V#v}"
+          if ! echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$'; then
+            echo "Invalid version: $V (expected SemVer like 2.0.0)"
+            exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Resolved DitakNet version: $V"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image (no push on failure)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          # load locally first — if this step fails, nothing is published
+          push: false
+          load: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.ver.outputs.version }}
+            ${{ env.IMAGE }}:latest
+          build-args: |
+            APP_VERSION=${{ steps.ver.outputs.version }}
+            IMAGE_TAG=${{ steps.ver.outputs.version }}
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Push versioned tag and latest
+        run: |
+          set -euo pipefail
+          docker push "${{ env.IMAGE }}:${{ steps.ver.outputs.version }}"
+          docker push "${{ env.IMAGE }}:latest"
+          echo "Published:"
+          echo "  ${{ env.IMAGE }}:${{ steps.ver.outputs.version }}"
+          echo "  ${{ env.IMAGE }}:latest"
+
+      - name: Summary
+        run: |
+          {
+            echo "## DitakNet GHCR publish"
+            echo ""
+            echo "- Version: \`${{ steps.ver.outputs.version }}\`"
+            echo "- Image: \`${{ env.IMAGE }}:${{ steps.ver.outputs.version }}\`"
+            echo "- Also tagged: \`${{ env.IMAGE }}:latest\` (testing only)"
+            echo "- Production TrueNAS installs should pin the version tag."
+          } >> "$GITHUB_STEP_SUMMARY"

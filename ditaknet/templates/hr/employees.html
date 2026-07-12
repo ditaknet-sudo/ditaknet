@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ t('employees') }}{% endblock %}
+{% block header %}{{ t('employees') }}{% endblock %}
+{% block actions %}
+{% if can_manage_employees %}<a class="btn btn-primary btn-sm" href="/employees/create">Add employee</a>{% endif %}
+<a class="btn btn-outline-secondary btn-sm" href="/attendance">Attendance</a>
+{% endblock %}
+{% block content %}
+<form class="row g-2 mb-3" method="get" action="/employees">
+  <div class="col-md-3"><input class="form-control" name="search" placeholder="Search" value="{{ filters.search }}"></div>
+  <div class="col-md-2"><select class="form-select" name="department_id"><option value="">All departments</option>{% for d in departments %}<option value="{{ d.id }}" {% if filters.department_id == d.id|string %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
+  <div class="col-md-2"><select class="form-select" name="group_id"><option value="">All groups</option>{% for g in groups %}<option value="{{ g.id }}" {% if filters.group_id == g.id|string %}selected{% endif %}>{{ g.name }}</option>{% endfor %}</select></div>
+  <div class="col-md-2"><button class="btn btn-outline-primary w-100" type="submit">Filter</button></div>
+</form>
+<table class="table table-sm table-hover">
+  <thead><tr><th>Name</th><th>Department</th><th>Group</th><th>Status</th><th>Code</th></tr></thead>
+  <tbody>
+  {% for e in employees %}
+    <tr><td>{{ e.full_name }}</td><td>{{ e.department_name or '—' }}</td><td>{{ e.group_name or '—' }}</td><td>{{ e.employment_status or e.status }}</td><td>{{ e.employee_code }}</td></tr>
+  {% else %}
+    <tr><td colspan="5" class="text-muted text-center">No employees.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

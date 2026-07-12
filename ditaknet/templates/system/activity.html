@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}{{ t('server_health.title') }} — {{ app_name }}{% endblock %}
+{% block page_title %}{{ t('server_health.title') }}{% endblock %}
+{% block page_subtitle %}
+<p class="text-muted small mb-0">{{ t('server_health.subtitle') }}</p>
+{% endblock %}
+{% block head_extra %}
+<link href="/static/css/server-health.css?v={{ asset_build }}" rel="stylesheet">
+{% endblock %}
+{% block actions %}
+<div class="d-flex align-items-center gap-2 flex-wrap" id="health-header-actions">
+  <span class="badge health-status-badge health-status-{{ overall_status }}" id="health-overall-badge">
+    {{ t('server_health.' ~ overall_status) }}
+  </span>
+  <button type="button" class="btn btn-outline-secondary btn-sm" id="health-refresh-btn" title="{{ t('server_health.refresh') }}">
+    <i class="bi bi-arrow-clockwise"></i> {{ t('server_health.refresh') }}
+  </button>
+  <div class="form-check form-switch mb-0">
+    <input class="form-check-input" type="checkbox" id="health-auto-refresh" checked>
+    <label class="form-check-label small" for="health-auto-refresh">{{ t('server_health.auto_refresh') }}</label>
+  </div>
+  <button type="button" class="btn btn-primary btn-sm" id="health-view-logs-btn" data-bs-toggle="offcanvas" data-bs-target="#health-logs-drawer">
+    <i class="bi bi-journal-text"></i> {{ t('server_health.view_logs') }}
+  </button>
+  <button type="button" class="btn btn-outline-primary btn-sm" id="health-view-details-btn" data-bs-toggle="modal" data-bs-target="#health-details-modal">
+    <i class="bi bi-info-circle"></i> {{ t('server_health.view_details') }}
+  </button>
+</div>
+{% endblock %}
+{% block content %}
+<div id="server-health-root" class="server-health-dashboard" data-asset-build="{{ asset_build }}">
+
+  <section class="health-resource-grid mb-4" id="health-resource-cards">
+    <div class="health-card health-metric-card" id="health-cpu-card" data-metric="cpu">
+      <div class="health-card-label">{{ t('server_health.cpu_usage') }}</div>
+      <div class="health-metric-value" id="health-cpu-value">—</div>
+      <div class="progress health-progress"><div class="progress-bar" id="health-cpu-bar" style="width:0%"></div></div>
+      <span class="health-metric-state" id="health-cpu-state">—</span>
+    </div>
+    <div class="health-card health-metric-card" id="health-ram-card" data-metric="ram">
+      <div class="health-card-label">{{ t('server_health.ram_usage') }}</div>
+      <div class="health-metric-value" id="health-ram-value">—</div>
+      <div class="progress health-progress"><div class="progress-bar" id="health-ram-bar" style="width:0%"></div></div>
+      <span class="health-metric-state" id="health-ram-state">—</span>
+    </div>
+    <div class="health-card health-metric-card" id="health-disk-card" data-metric="disk">
+      <div class="health-card-label">{{ t('server_health.disk_usage') }}</div>
+      <div class="health-metric-value" id="health-disk-value">—</div>
+      <div class="progress health-progress"><div class="progress-bar" id="health-disk-bar" style="width:0%"></div></div>
+      <span class="health-metric-state" id="health-disk-state">—</span>
+      <div class="health-disk-paths small text-muted" id="health-disk-paths"></div>
+    </div>
+    <div class="health-card health-metric-card" id="health-network-card">
+      <div class="health-card-label">{{ t('server_health.network_io') }}</div>
+      <div class="health-network-rates" id="health-network-rates">
+        <div><span class="text-muted">{{ t('server_health.upload_rate') }}:</span> <span id="health-upload-rate">—</span></div>
+        <div><span class="text-muted">{{ t('server_health.download_rate') }}:</span> <span id="health-download-rate">—</span></div>
+      </div>
+      <div class="small text-muted d-none" id="health-network-unavailable">{{ t('server_health.metrics_unavailable') }}</div>
+    </div>
+    <div class="health-card health-stat-card" id="health-uptime-card">
+      <div class="health-card-label">{{ t('server_health.uptime') }}</div>
+      <div class="health-stat-value" id="health-uptime-value">—</div>
+    </div>
+    <div class="health-card health-stat-card" id="health-scheduler-card">
+      <div class="health-card-label">{{ t('server_health.scheduler') }}</div>
+      <div class="health-stat-value" id="health-scheduler-value">—</div>
+    </div>
+    <div class="health-card health-stat-card" id="health-database-card">
+      <div class="health-card-label">{{ t('server_health.database') }}</div>
+      <div class="health-stat-value" id="health-database-value">—</div>
+    </div>
+    <div class="health-card health-stat-card" id="health-jobs-count-card">
+      <div class="health-card-label">{{ t('server_health.active_jobs') }}</div>
+      <div class="health-stat-value" id="health-jobs-count-value">0</div>
+    </div>
+  </section>
+
+  <div class="row g-3 mb-4">
+    <div class="col-lg-7">
+      <div class="health-panel card mb-3">
+        <div class="card-header py-2"><strong>{{ t('server_health.current_workload') }}</strong></div>
+        <div class="card-body py-2" id="health-workload-body"></div>
+      </div>
+      <div class="health-panel card mb-3">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <strong>{{ t('server_health.active_jobs') }}</strong>
+          <span class="badge bg-secondary" id="health-active-jobs-badge">0</span>
+        </div>
+        <div class="card-body py-2" id="health-active-jobs-body">
+          <p class="text-muted small mb-0">{{ t('server_health.no_active_jobs') }}</p>
+        </div>
+      </div>
+      <div class="health-panel card mb-3" id="health-discovery-panel">
+        <div class="card-header py-2"><strong>{{ t('server_health.running_discovery') }}</strong></div>
+        <div class="card-body py-2" id="health-discovery-body">
+          <p class="text-muted small mb-2">{{ t('server_health.no_discovery_scan_running') }}</p>
+          <a href="/discovery" class="btn btn-sm btn-outline-primary">{{ t('server_health.start_discovery') }}</a>
+        </div>
+      </div>
+      <div class="health-panel card mb-3">
+        <div class="card-header py-2"><strong>{{ t('server_health.running_checks') }}</strong></div>
+        <div class="card-body py-2" id="health-checks-body">
+          <p class="text-muted small mb-0">{{ t('server_health.no_checks_running') }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="health-panel card mb-3">
+        <div class="card-header py-2"><strong>{{ t('server_health.health_details') }}</strong></div>
+        <div class="card-body py-2 small" id="health-details-summary"></div>
+      </div>
+      <div class="health-panel card mb-3">
+        <div class="card-header py-2"><strong>{{ t('server_health.last_error_warning') }}</strong></div>
+        <div class="card-body py-2 small" id="health-last-alerts"></div>
+      </div>
+      <div class="health-panel card mb-3">
+        <div class="card-header py-2"><strong>{{ t('server_health.active_modules') }}</strong></div>
+        <div class="card-body py-2" id="health-modules-body"></div>
+      </div>
+      <div class="health-panel card mb-3">
+        <div class="card-header py-2"><strong>{{ t('server_health.deployment_info') }}</strong></div>
+        <div class="card-body py-2 small" id="health-deployment-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <section class="health-preview card">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+      <strong>{{ t('server_health.recent_important_events') }}</strong>
+      <button type="button" class="btn btn-sm btn-outline-primary" id="health-open-full-logs-btn" data-bs-toggle="offcanvas" data-bs-target="#health-logs-drawer">
+        {{ t('server_health.open_full_logs') }}
+      </button>
+    </div>
+    <ul class="list-group list-group-flush" id="health-preview-events">
+      {% for event in preview_events %}
+      <li class="list-group-item py-2 small health-preview-item">
+        <span class="badge bg-{{ event.level | status_badge }} me-1">{{ event.level }}</span>
+        <span class="text-muted">{{ event.created_at | datetime }}</span>
+        <span>{{ event.message }}</span>
+      </li>
+      {% else %}
+      <li class="list-group-item py-2 text-muted small">{{ t('server_health.no_important_events') }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+
+<div class="offcanvas offcanvas-end health-logs-drawer" tabindex="-1" id="health-logs-drawer" aria-labelledby="health-logs-drawer-label">
+  <div class="offcanvas-header border-bottom">
+    <h5 class="offcanvas-title" id="health-logs-drawer-label">{{ t('server_health.system_logs') }}</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body p-0 d-flex flex-column">
+    <ul class="nav nav-tabs px-3 pt-2" id="health-logs-tabs" role="tablist">
+      <li class="nav-item"><button class="nav-link active" data-tab="important">{{ t('server_health.important_events') }}</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="errors">{{ t('server_health.errors') }}</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="monitoring">{{ t('server_health.monitoring') }}</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="discovery">{{ t('server_health.discovery') }}</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="security">{{ t('server_health.security') }}</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="raw">{{ t('server_health.raw_logs') }}</button></li>
+    </ul>
+    <div class="health-logs-filters p-3 border-bottom">
+      <div class="row g-2">
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-0">{{ t('server_health.level') }}</label>
+          <select class="form-select form-select-sm" id="logs-filter-level">
+            <option value="all">{{ t('server_health.all') }}</option>
+            <option value="error">error</option>
+            <option value="warning">warning</option>
+            <option value="info">info</option>
+            <option value="debug">debug</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-0">{{ t('server_health.category') }}</label>
+          <select class="form-select form-select-sm" id="logs-filter-category">
+            <option value="all">{{ t('server_health.all') }}</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label small mb-0">{{ t('server_health.search') }}</label>
+          <input type="search" class="form-control form-control-sm" id="logs-filter-search" placeholder="{{ t('server_health.search') }}">
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label small mb-0">{{ t('server_health.date_from') }}</label>
+          <input type="date" class="form-control form-control-sm" id="logs-filter-from" placeholder="YYYY-MM-DD">
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label small mb-0">{{ t('server_health.date_to') }}</label>
+          <input type="date" class="form-control form-control-sm" id="logs-filter-to" placeholder="YYYY-MM-DD">
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label small mb-0">{{ t('server_health.page_size') }}</label>
+          <select class="form-select form-select-sm" id="logs-filter-limit">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="health-logs-list flex-grow-1 overflow-auto" id="health-logs-list"></div>
+    <div class="health-logs-pagination p-2 border-top d-flex justify-content-between align-items-center">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="logs-prev-btn" disabled>{{ t('server_health.prev') }}</button>
+      <span class="small text-muted" id="logs-page-info">—</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="logs-next-btn">{{ t('server_health.next') }}</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="health-details-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">{{ t('server_health.view_details') }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body small" id="health-details-modal-body"></div>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="health-dashboard-config">{{ {
+  'overall_status': overall_status,
+  'metrics': metrics,
+  'health': health,
+  'workload': workload,
+  'active_jobs': active_jobs,
+  'running_checks': running_checks,
+  'discovery': discovery,
+  'preview_events': preview_events,
+  'asset_build': asset_build,
+  'feature_flags': feature_flags,
+  'i18n': {
+    'metrics_unavailable': t('server_health.metrics_unavailable'),
+    'no_active_jobs': t('server_health.no_active_jobs'),
+    'no_discovery_scan_running': t('server_health.no_discovery_scan_running'),
+    'no_checks_running': t('server_health.no_checks_running'),
+    'healthy': t('server_health.healthy'),
+    'busy': t('server_health.busy'),
+    'warning': t('server_health.warning'),
+    'critical': t('server_health.critical'),
+    'normal': t('server_health.normal'),
+    'high': t('server_health.high'),
+  }
+} | tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/server-health.js?v={{ asset_build }}"></script>
+{% endblock %}

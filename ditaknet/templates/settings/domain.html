@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('settings.domain.title') }}{% endblock %}
+{% block header %}{{ t('settings.title') }}{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  {% include "settings/_sidebar.html" %}
+  <div class="col-md-9">
+    {% if domain_warnings %}
+    <div class="alert alert-warning">
+      <i class="bi bi-exclamation-triangle me-2"></i>{{ t('settings.domain.warning_misconfigured') }}
+    </div>
+    {% endif %}
+
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header bg-transparent fw-bold pt-4">{{ t('settings.domain.public_url') }}</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <span class="text-muted">{{ t('settings.domain.base_url') }}</span>
+            <div class="font-monospace small text-break">{{ domain.base_url }}</div>
+            <div class="form-text">{{ t('settings.domain.base_url_help') }}</div>
+          </div>
+          <div class="col-md-4">
+            <span class="text-muted">{{ t('settings.domain.test_status') }}</span>
+            <div>
+              {% if domain.misconfigured %}
+              <span class="badge bg-warning text-dark">{{ t('settings.domain.status_needs_attention') }}</span>
+              {% elif domain.https_configured %}
+              <span class="badge bg-success">{{ t('settings.domain.status_https_ok') }}</span>
+              {% else %}
+              <span class="badge bg-secondary">{{ t('settings.domain.status_local_ok') }}</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header bg-transparent fw-bold pt-4">{{ t('settings.domain.external_access') }}</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <span class="text-muted">{{ t('https_configured') }}</span>
+            <div>{{ domain.https_configured and t('about.yes') or t('about.no') }}</div>
+          </div>
+          <div class="col-md-4">
+            <span class="text-muted">{{ t('reverse_proxy_detected') }}</span>
+            <div>{{ domain.trusted_proxies != '—' and t('about.yes') or t('about.no') }}</div>
+          </div>
+          <div class="col-md-4">
+            <span class="text-muted">{{ t('settings.security.secure_cookie') }}</span>
+            <div>{{ domain.session_cookie_secure and t('about.yes') or t('about.no') }}</div>
+          </div>
+          <div class="col-md-6">
+            <span class="text-muted">{{ t('settings.security.cors_origins') }}</span>
+            <div class="font-monospace small">{{ domain.cors_origins|join(', ') if domain.cors_origins else '—' }}</div>
+          </div>
+          <div class="col-md-6">
+            <span class="text-muted">{{ t('settings.security.trusted_proxies') }}</span>
+            <div class="font-monospace small">{{ domain.trusted_proxies }}</div>
+          </div>
+        </div>
+        {% if domain.public_http_warning %}
+        <div class="alert alert-danger mt-3 mb-0">
+          {{ t('settings.domain.public_http_warning') }}
+        </div>
+        {% endif %}
+        <p class="text-muted small mt-3 mb-0">{{ t('settings.domain.env_note') }}</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

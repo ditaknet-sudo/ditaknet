@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('settings.system.title') }}{% endblock %}
+{% block header %}{{ t('settings.title') }}{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  {% include "settings/_sidebar.html" %}
+  <div class="col-md-9">
+    <div class="row g-3 mb-3">
+      <div class="col-md-3"><div class="card shadow-sm border-0 h-100"><div class="card-body"><div class="text-muted small text-uppercase">{{ t('settings.system.app_status') }}</div><div class="h5 mb-0">{{ health.status }}</div></div></div></div>
+      <div class="col-md-3"><div class="card shadow-sm border-0 h-100"><div class="card-body"><div class="text-muted small text-uppercase">{{ t('settings.system.scheduler') }}</div><div class="h5 mb-0">{{ scheduler.running and t('settings.general.running') or t('settings.general.stopped') }}</div></div></div></div>
+      <div class="col-md-3"><div class="card shadow-sm border-0 h-100"><div class="card-body"><div class="text-muted small text-uppercase">{{ t('settings.system.jobs') }}</div><div class="h5 mb-0">{{ scheduler.job_count }}</div></div></div></div>
+      <div class="col-md-3"><div class="card shadow-sm border-0 h-100"><div class="card-body"><div class="text-muted small text-uppercase">{{ t('settings.system.maintenance') }}</div><div class="h5 mb-0">{{ maintenance_mode and 'ON' or 'OFF' }}</div></div></div></div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header bg-transparent fw-bold pt-4">{{ t('settings.system.resources') }}</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4"><div class="text-muted small">{{ t('settings.system.cpu') }}</div><div class="progress" style="height:10px"><div class="progress-bar" style="width: {{ metrics.cpu_percent or 0 }}%"></div></div><div class="small mt-1">{{ metrics.cpu_percent }}%</div></div>
+          <div class="col-md-4"><div class="text-muted small">{{ t('settings.system.memory') }}</div><div class="progress" style="height:10px"><div class="progress-bar" style="width: {{ metrics.ram_percent or 0 }}%"></div></div><div class="small mt-1">{{ metrics.ram_percent }}%</div></div>
+          <div class="col-md-4"><div class="text-muted small">{{ t('settings.system.disk') }}</div><div class="progress" style="height:10px"><div class="progress-bar" style="width: {{ metrics.disk_percent or 0 }}%"></div></div><div class="small mt-1">{{ metrics.disk_percent }}%</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header bg-transparent fw-bold pt-4">{{ t('settings.system.update') }}</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4"><span class="text-muted">{{ t('settings.system.current_version') }}</span><div class="fw-bold">{{ update_status.current_version or settings.app_version }}</div></div>
+          <div class="col-md-4"><span class="text-muted">{{ t('settings.system.latest_version') }}</span><div class="fw-bold">{{ update_status.latest_version or '—' }}</div></div>
+          <div class="col-md-4"><span class="text-muted">{{ t('settings.system.update_status') }}</span><div class="fw-bold">{{ update_status.status }}</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-transparent fw-bold pt-4">{{ t('settings.system.maintenance') }}</div>
+      <div class="card-body">
+        <form method="post" action="/settings/system/maintenance" class="d-flex align-items-center gap-3">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" role="switch" name="enabled" value="1" id="maintenance-mode" {% if maintenance_mode %}checked{% endif %}>
+            <label class="form-check-label" for="maintenance-mode">{{ t('settings.system.maintenance_mode') }}</label>
+          </div>
+          <button class="btn btn-primary btn-sm">{{ t('settings.action.save') }}</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

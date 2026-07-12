@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Add employee device{% endblock %}
+{% block page_title %}Add device for {{ employee.full_name if employee else 'employee' }}{% endblock %}
+{% block page_subtitle %}
+<p class="text-muted mb-0">Register an approved corporate device for presence detection.</p>
+{% endblock %}
+{% block content %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<div class="card shadow-sm border-0">
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      <div class="col-md-6"><label class="form-label">Device name</label><input class="form-control" name="device_name" required></div>
+      <div class="col-md-3">
+        <label class="form-label">Device type</label>
+        <select class="form-select" name="device_type">
+          <option value="laptop">Laptop</option>
+          <option value="desktop">Desktop</option>
+          <option value="phone">Phone</option>
+          <option value="tablet">Tablet</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="col-md-3"><label class="form-label">Agent ID</label><input class="form-control" name="agent_id"></div>
+      <div class="col-md-4"><label class="form-label">MAC address</label><input class="form-control" name="mac_address" placeholder="AA:BB:CC:DD:EE:FF"></div>
+      <div class="col-md-4"><label class="form-label">Hostname</label><input class="form-control" name="hostname"></div>
+      <div class="col-md-4"><label class="form-label">Static / reserved IP</label><input class="form-control" name="static_ip" placeholder="192.168.1.50"></div>
+      <div class="col-12">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="1" name="is_primary" id="is_primary">
+          <label class="form-check-label" for="is_primary">Primary work device</label>
+        </div>
+      </div>
+      <div class="col-12">
+        <div class="alert alert-warning mb-0">
+          IP-only matching can be inaccurate. For better accuracy, configure static DHCP reservation or register MAC address.
+        </div>
+      </div>
+      <div class="col-12 d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Save device</button>
+        <a class="btn btn-outline-secondary" href="/employees/{{ employee.id }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

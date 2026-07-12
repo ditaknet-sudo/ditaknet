@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ t('shifts') }}{% endblock %}
+{% block header %}{{ t('shifts') }}{% endblock %}
+{% block actions %}<a class="btn btn-primary btn-sm" href="/shifts/create">Add shift</a>{% endblock %}
+{% block content %}
+<table class="table table-sm">
+  <thead><tr><th>Name</th><th>Hours</th><th>Expected</th><th>Overnight</th></tr></thead>
+  <tbody>
+  {% for s in shifts %}
+    <tr><td>{{ s.name }}</td><td>{{ s.start_time }} – {{ s.end_time }}</td><td>{{ s.expected_work_minutes }} min</td><td>{{ 'Yes' if s.is_overnight else 'No' }}</td></tr>
+  {% else %}
+    <tr><td colspan="4" class="text-muted text-center">No shifts yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

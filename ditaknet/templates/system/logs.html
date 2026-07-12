@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('system_logs') }}{% endblock %}
+{% block page_title %}{{ t('system_logs') }}{% endblock %}
+{% block page_subtitle %}<p class="text-muted small mb-0">{{ t('system_logs.subtitle') }}</p>{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm border-0">
+  <div class="card-header bg-transparent pt-4">
+    <ul class="nav nav-tabs card-header-tabs" id="logs-tabs" role="tablist">
+      <li class="nav-item"><button class="nav-link active" data-tab="" type="button">{{ t('system_logs.tab.all') }}</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="application" type="button">{{ t('system_logs.tab.application') }}</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="monitoring" type="button">{{ t('system_logs.tab.monitoring') }}</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="discovery" type="button">{{ t('system_logs.tab.discovery') }}</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="notification" type="button">{{ t('system_logs.tab.notifications') }}</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="license" type="button">{{ t('system_logs.tab.license') }}</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="security" type="button">{{ t('system_logs.tab.security') }}</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="errors" type="button">{{ t('system_logs.tab.errors') }}</button></li>
+    </ul>
+  </div>
+  <div class="card-body">
+    <div class="row g-2 mb-3">
+      <div class="col-md-2">
+        <label class="form-label small text-muted">{{ t('system_logs.filter.level') }}</label>
+        <select class="form-select form-select-sm" id="logs-filter-level">
+          <option value="">{{ t('system_logs.filter.any') }}</option>
+          <option value="debug">debug</option>
+          <option value="info">info</option>
+          <option value="warning">warning</option>
+          <option value="error">error</option>
+          <option value="critical">critical</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small text-muted">{{ t('system_logs.filter.search') }}</label>
+        <input type="search" class="form-control form-control-sm" id="logs-filter-search" placeholder="{{ t('system_logs.filter.search_placeholder') }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">{{ t('system_logs.filter.from') }}</label>
+        <input type="date" class="form-control form-control-sm" id="logs-filter-from">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">{{ t('system_logs.filter.to') }}</label>
+        <input type="date" class="form-control form-control-sm" id="logs-filter-to">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted">{{ t('system_logs.filter.per_page') }}</label>
+        <select class="form-select form-select-sm" id="logs-page-size">
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+      <div class="col-md-1 d-flex align-items-end">
+        <button type="button" class="btn btn-primary btn-sm w-100" id="logs-refresh-btn">{{ t('system_logs.refresh') }}</button>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle" id="logs-table">
+        <thead>
+          <tr>
+            <th>{{ t('system_logs.col.time') }}</th>
+            <th>{{ t('system_logs.col.level') }}</th>
+            <th>{{ t('system_logs.col.category') }}</th>
+            <th>{{ t('system_logs.col.message') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="logs-table-body">
+          <tr><td colspan="5" class="text-muted text-center py-4">{{ t('system_logs.loading') }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="logs-empty" class="text-center text-muted py-5 d-none">
+      <i class="bi bi-journal-text display-6 d-block mb-2"></i>
+      <p class="mb-0">{{ t('system_logs.empty') }}</p>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-3">
+      <div class="small text-muted" id="logs-pagination-info"></div>
+      <div class="btn-group btn-group-sm">
+        <button type="button" class="btn btn-outline-secondary" id="logs-prev-btn" disabled>{{ t('system_logs.prev') }}</button>
+        <button type="button" class="btn btn-outline-secondary" id="logs-next-btn" disabled>{{ t('system_logs.next') }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="log-detail-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">{{ t('system_logs.detail_title') }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row small mb-0" id="log-detail-body"></dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="system-logs-config">{{ {"i18n": {
+  "empty": t('system_logs.empty'),
+  "load_error": t('system_logs.load_error')
+}} | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/system-logs.js?v={{ asset_build }}"></script>
+{% endblock %}

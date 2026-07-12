@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('notification_center') }}{% endblock %}
+{% block page_title %}{{ t('notification_center') }}{% endblock %}
+
+{% block actions %}
+<div class="btn-group btn-group-sm">
+  <button type="button" class="btn btn-outline-secondary" id="btn-mark-all-read">{{ t('notifications.mark_all_read') }}</button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm border-0">
+  <div class="card-body p-0">
+    <div class="list-group list-group-flush" id="notifications-list">
+      <div class="list-group-item text-muted text-center py-5">{{ t('system_logs.loading') }}</div>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="notifications-page-config">{{ {"i18n": {
+  "empty": t('notifications.empty'),
+  "dismiss": t('dismiss'),
+  "mark_as_read": t('mark_as_read')
+}} | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/notifications-page.js?v=20260706a"></script>
+{% endblock %}

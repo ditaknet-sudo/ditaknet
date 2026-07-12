@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Access denied{% endblock %}
+{% block header %}{{ t('employee_attendance') }}{% endblock %}
+{% block content %}
+<div class="alert alert-danger">
+  <p class="mb-0">You do not have permission to access the Employee Attendance module.</p>
+</div>
+{% endblock %}

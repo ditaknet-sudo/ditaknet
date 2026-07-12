@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}{{ t('license.complimentary.page_title') }} - {{ app_name }}{% endblock %}
+{% block page_title %}{{ t('license.complimentary.page_title') }}{% endblock %}
+{% block page_subtitle %}<p class="text-muted small mb-0">{{ t('license.complimentary.page_subtitle') }}</p>{% endblock %}
+{% block extra_head %}
+<link href="/static/css/license-page.css?v={{ static_asset_build }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="professional-license">
+  <section class="professional-license__intro">
+    <div class="professional-license__gift" aria-hidden="true">
+      <i class="bi bi-gift-fill"></i>
+    </div>
+    <div class="professional-license__message">
+      <span class="professional-license__eyebrow">{{ t('license.complimentary.badge') }}</span>
+      <h2>{{ t('license.complimentary.title') }}</h2>
+      <p>{{ t('license.complimentary.description') }}</p>
+      <div class="professional-license__actions">
+        <a class="btn btn-success" href="/dashboard">
+          <i class="bi bi-speedometer2" aria-hidden="true"></i>
+          {{ t('license.complimentary.open_dashboard') }}
+        </a>
+        <a class="btn btn-outline-secondary" href="/about?tab=system">
+          <i class="bi bi-info-circle" aria-hidden="true"></i>
+          {{ t('license.complimentary.system_info') }}
+        </a>
+      </div>
+    </div>
+    <div class="professional-license__seal">
+      <i class="bi bi-patch-check-fill" aria-hidden="true"></i>
+      <strong>Professional</strong>
+      <span>{{ t('license.health.active') }}</span>
+    </div>
+  </section>
+
+  <section class="professional-license__status" aria-label="{{ t('license.status') }}">
+    <div>
+      <span>{{ t('license.tier') }}</span>
+      <strong>Professional</strong>
+    </div>
+    <div>
+      <span>{{ t('license.complimentary.activation') }}</span>
+      <strong>{{ t('license.complimentary.not_required') }}</strong>
+    </div>
+    <div>
+      <span>{{ t('license.complimentary.trial') }}</span>
+      <strong>{{ t('license.complimentary.no_trial') }}</strong>
+    </div>
+    <div>
+      <span>{{ t('license.expires') }}</span>
+      <strong>{{ t('license.no_expiry') }}</strong>
+    </div>
+    <div>
+      <span>{{ t('license.complimentary.price') }}</span>
+      <strong>{{ t('license.complimentary.free') }}</strong>
+    </div>
+    <div class="professional-license__installation">
+      <span>{{ t('license.installation_id') }}</span>
+      <code>{{ license.installation_id }}</code>
+    </div>
+  </section>
+
+  <section class="professional-license__section">
+    <div class="professional-license__section-head">
+      <div>
+        <span>{{ t('license.complimentary.usage_kicker') }}</span>
+        <h3>{{ t('license.complimentary.usage_title') }}</h3>
+      </div>
+      <p>{{ t('license.complimentary.usage_note') }}</p>
+    </div>
+    <div class="professional-license__usage">
+      <div class="professional-license__metric">
+        <i class="bi bi-hdd-network" aria-hidden="true"></i>
+        <span>{{ t('license.used_hosts') }}</span>
+        <strong>{{ license.used_hosts }}</strong>
+        <small>{{ t('license.unlimited') }}</small>
+      </div>
+      <div class="professional-license__metric">
+        <i class="bi bi-activity" aria-hidden="true"></i>
+        <span>{{ t('license.used_services') }}</span>
+        <strong>{{ license.used_services }}</strong>
+        <small>{{ t('license.unlimited') }}</small>
+      </div>
+      <div class="professional-license__metric">
+        <i class="bi bi-diagram-3" aria-hidden="true"></i>
+        <span>{{ t('license.used_subnets') }}</span>
+        <strong>{{ license.used_subnets }}</strong>
+        <small>{{ t('license.unlimited') }}</small>
+      </div>
+      <div class="professional-license__metric">
+        <i class="bi bi-buildings" aria-hidden="true"></i>
+        <span>{{ t('license.used_offices') }}</span>
+        <strong>{{ license.used_offices }}</strong>
+        <small>{{ t('license.unlimited') }}</small>
+      </div>
+      <div class="professional-license__metric">
+        <i class="bi bi-router" aria-hidden="true"></i>
+        <span>{{ t('license.used_branch_agents') }}</span>
+        <strong>{{ license.used_branch_agents }}</strong>
+        <small>{{ t('license.unlimited') }}</small>
+      </div>
+    </div>
+  </section>
+
+  <section class="professional-license__section">
+    <div class="professional-license__section-head">
+      <div>
+        <span>{{ t('license.complimentary.modules_kicker') }}</span>
+        <h3>{{ t('license.complimentary.modules_title') }}</h3>
+      </div>
+      <p>{{ t('license.complimentary.modules_note') }}</p>
+    </div>
+    <div class="professional-license__modules">
+      {% for icon, label in [
+        ('bi-display', 'license.module.monitoring'),
+        ('bi-radar', 'license.module.discovery'),
+        ('bi-bell', 'license.module.alerts'),
+        ('bi-diagram-2', 'license.module.topology'),
+        ('bi-file-earmark-bar-graph', 'license.module.reports'),
+        ('bi-cpu', 'license.module.agents'),
+        ('bi-journal-check', 'license.module.audit_logs'),
+        ('bi-calendar-check', 'license.module.attendance'),
+        ('bi-buildings', 'license.module.multi_office'),
+        ('bi-router', 'license.module.branch_agents')
+      ] %}
+      <div class="professional-license__module">
+        <i class="bi {{ icon }}" aria-hidden="true"></i>
+        <span>{{ t(label) }}</span>
+        <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="professional-license__trust">
+    <i class="bi bi-house-lock-fill" aria-hidden="true"></i>
+    <div>
+      <h3>{{ t('license.complimentary.local_title') }}</h3>
+      <p>{{ t('license.complimentary.local_description') }}</p>
+    </div>
+  </section>
+</div>
+{% endblock %}
