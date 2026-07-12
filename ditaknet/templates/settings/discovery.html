@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('settings.discovery.title') }}{% endblock %}
+{% block header %}{{ t('settings.title') }}{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  {% include "settings/_sidebar.html" %}
+  <div class="col-md-9">
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header bg-transparent fw-bold pt-4">{{ t('settings.discovery.runtime') }}</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4"><span class="text-muted">{{ t('settings.discovery.deployment') }}</span><div class="fw-bold">{{ runtime_network.deployment_mode }}</div></div>
+          <div class="col-md-4"><span class="text-muted">{{ t('settings.discovery.container') }}</span><div>{% if runtime_network.in_container %}<span class="badge bg-warning text-dark">{{ t('about.yes') }}</span>{% else %}<span class="badge bg-success">{{ t('about.no') }}</span>{% endif %}</div></div>
+          <div class="col-md-4"><span class="text-muted">{{ t('settings.discovery.tools') }}</span><div class="fw-bold">ping: {{ runtime_network.has_ping and 'OK' or '—' }} · ip: {{ runtime_network.has_ip_tool and 'OK' or '—' }}</div></div>
+          <div class="col-md-4"><span class="text-muted">CAP_NET_RAW</span><div>{% if runtime_network.cap_net_raw %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-secondary">OFF</span>{% endif %}</div></div>
+          <div class="col-md-4"><span class="text-muted">CAP_NET_ADMIN</span><div>{% if runtime_network.cap_net_admin %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-secondary">OFF</span>{% endif %}</div></div>
+        </div>
+        {% if runtime_network.in_container %}
+        <div class="alert alert-warning mt-3 mb-0">{{ t('discovery.container_limitations') }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header bg-transparent fw-bold pt-4">{{ t('settings.discovery.policy') }}</div>
+      <div class="card-body">
+        <form method="post" action="/settings/discovery">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">{{ t('network_discovery.auto_refresh') }}</label>
+              <select class="form-select" name="auto_refresh_enabled">
+                <option value="1" {% if discovery_settings.auto_refresh_enabled %}selected{% endif %}>{{ t('about.yes') }}</option>
+                <option value="0" {% if not discovery_settings.auto_refresh_enabled %}selected{% endif %}>{{ t('about.no') }}</option>
+              </select>
+            </div>
+            <div class="col-md-4"><label class="form-label">{{ t('network_discovery.refresh_interval') }}</label><input class="form-control" type="number" min="1" name="refresh_interval_minutes" value="{{ discovery_settings.refresh_interval_minutes }}"></div>
+            <div class="col-md-4">
+              <label class="form-label">{{ t('settings.discovery.scan_mode') }}</label>
+              <select class="form-select" name="scan_mode">
+                {% for mode in ['quick', 'normal', 'deep'] %}
+                <option value="{{ mode }}" {% if discovery_settings.scan_mode == mode %}selected{% endif %}>{{ t('discovery.profile.' + mode) }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6"><label class="form-label">{{ t('settings.discovery.stale_after') }}</label><input class="form-control" type="number" min="1" name="stale_after_minutes" value="{{ discovery_settings.stale_after_minutes }}"></div>
+            <div class="col-md-6"><label class="form-label">{{ t('settings.discovery.offline_after') }}</label><input class="form-control" type="number" min="1" name="offline_after_minutes" value="{{ discovery_settings.offline_after_minutes }}"></div>
+          </div>
+          <button class="btn btn-primary mt-3">{{ t('settings.action.save') }}</button>
+          <a href="/discovery" class="btn btn-outline-secondary mt-3">{{ t('nav.discovery') }}</a>
+        </form>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-transparent fw-bold pt-4">{{ t('settings.discovery.networks_scans') }}</div>
+      <div class="card-body">
+        <div class="row g-3 mb-3">
+          <div class="col-md-4"><div class="text-muted small">{{ t('network_discovery.monitored_networks') }}</div><div class="h4">{{ networks|length }}</div></div>
+          <div class="col-md-4"><div class="text-muted small">{{ t('network_discovery.scan_history') }}</div><div class="h4">{{ scans|length }}</div></div>
+          <div class="col-md-4"><div class="text-muted small">{{ t('settings.discovery.last_scan') }}</div><div class="h4">{{ scans[0].status if scans else '—' }}</div></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead><tr><th>{{ t('network_discovery.cidr_subnet') }}</th><th>{{ t('network_discovery.last_scan') }}</th><th>{{ t('network_discovery.auto_refresh') }}</th><th>{{ t('settings.status.enabled') }}</th></tr></thead>
+            <tbody>
+              {% for network in networks %}
+              <tr><td class="font-monospace">{{ network.cidr }}</td><td>{{ network.last_scan_id or '—' }}</td><td>{{ network.auto_refresh_enabled and t('about.yes') or t('about.no') }}</td><td>{{ network.enabled and t('about.yes') or t('about.no') }}</td></tr>
+              {% else %}
+              <tr><td colspan="4" class="text-muted">{{ t('network_discovery.no_monitored_networks') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

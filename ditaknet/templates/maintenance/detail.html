@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ task.title }}{% endblock %}
+{% block page_title %}{{ task.title }}{% endblock %}
+{% block actions %}
+{% if task.status == 'open' %}
+<form method="post" action="/maintenance/{{ task.id }}/resolve"><button class="btn btn-success btn-sm">{{ t('maintenance.resolve') }}</button></form>
+{% endif %}
+{% endblock %}
+{% block content %}
+<p><strong>Status:</strong> {{ task.status }} | <strong>Priority:</strong> {{ task.priority }}</p>
+<p>{{ task.recommendation }}</p>
+{% endblock %}

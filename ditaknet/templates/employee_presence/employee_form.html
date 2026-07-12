@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Add employee{% endblock %}
+{% block page_title %}Add employee{% endblock %}
+{% block page_subtitle %}
+<p class="text-muted mb-0">Register an employee for approved corporate device presence monitoring.</p>
+{% endblock %}
+{% block content %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<div class="card shadow-sm border-0">
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      <div class="col-md-6"><label class="form-label">Full name</label><input class="form-control" name="full_name" required></div>
+      <div class="col-md-3"><label class="form-label">Department</label><input class="form-control" name="department"></div>
+      <div class="col-md-3"><label class="form-label">Position</label><input class="form-control" name="position"></div>
+      <div class="col-md-4"><label class="form-label">Email</label><input class="form-control" name="email" type="email"></div>
+      <div class="col-md-4"><label class="form-label">Phone</label><input class="form-control" name="phone"></div>
+      <div class="col-md-4"><label class="form-label">Employee code</label><input class="form-control" name="employee_code"></div>
+      <div class="col-12">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="1" name="privacy_notice_accepted" id="privacy_notice_accepted">
+          <label class="form-check-label" for="privacy_notice_accepted">
+            Employee notice/company policy approval is recorded.
+          </label>
+        </div>
+      </div>
+      <div class="col-12">
+        <div class="alert alert-info mb-0">
+          Use this feature only with employee notice and company policy approval.
+        </div>
+      </div>
+      <div class="col-12 d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Save employee</button>
+        <a class="btn btn-outline-secondary" href="/employees">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

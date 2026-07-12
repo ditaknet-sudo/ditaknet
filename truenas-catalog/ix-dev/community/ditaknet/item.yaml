@@ -1,0 +1,9 @@
+categories:
+  - monitoring
+  - networking
+icon_url: https://media.sys.truenas.net/apps/ditaknet/icons/icon.svg
+tags:
+  - monitoring
+  - network
+  - discovery
+title: DitakNet

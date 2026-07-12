@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('settings.reset.title') }}{% endblock %}
+{% block header %}{{ t('settings.title') }}{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    {% include "settings/_sidebar.html" %}
+    <div class="col-md-9">
+        <div class="card shadow-sm border-0 border-danger">
+            <div class="card-header bg-transparent fw-bold border-bottom-0 pt-4 text-danger">
+                <i class="bi bi-exclamation-triangle me-1"></i> {{ t('settings.reset.title') }}
+            </div>
+            <div class="card-body">
+                {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+                {% endif %}
+                <p class="text-muted">{{ t('settings.reset.description') }}</p>
+                <ul class="small text-muted">
+                    <li>{{ t('settings.reset.item.hosts') }}</li>
+                    <li>{{ t('settings.reset.item.checks') }}</li>
+                    <li>{{ t('settings.reset.item.alerts') }}</li>
+                    <li>{{ t('settings.reset.item.discovery') }}</li>
+                    <li>{{ t('settings.reset.item.setup') }}</li>
+                </ul>
+                <p class="small">{{ t('settings.reset.keep_env') }}</p>
+
+                <form method="post" action="/settings/reset" class="mt-4" onsubmit="return confirm('{{ t('settings.reset.confirm_js') }}');">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">{{ t('settings.reset.confirm_label') }}</label>
+                        <input class="form-control font-monospace" name="confirmation" required autocomplete="off" placeholder="RESET DITAKNET">
+                        <div class="form-text">{{ t('settings.reset.confirm_hint') }}</div>
+                    </div>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i> {{ t('settings.reset.button') }}
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

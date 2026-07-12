@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+{% block title %}{{ t('dashboard.title') }}{% endblock %}
+{% block header %}{{ t('dashboard.overview') }}{% endblock %}
+{% block extra_head %}
+<link href="/static/css/dashboard-overview.css?v={{ overview_asset_build }}" rel="stylesheet">
+<meta http-equiv="refresh" content="45">
+{% endblock %}
+{% block content %}
+{% set h = overview.header %}
+{% set k = overview.kpis %}
+{% set lic = overview.license %}
+{% set monitors = overview.monitors %}
+{% set selected = overview.selected_monitor %}
+
+<div class="dash-overview">
+  <header class="dash-console-top">
+    <div class="dash-brand">
+      <span class="dash-brand-dot"><i class="bi bi-hdd-network"></i></span>
+      <span>DitakNet</span>
+    </div>
+    <nav class="dash-console-actions" aria-label="Dashboard views">
+      <a href="/system/health" class="dash-console-link"><i class="bi bi-list-check"></i> Status</a>
+      <a href="/dashboard" class="dash-console-link active"><i class="bi bi-speedometer2"></i> Dashboard</a>
+      <a href="/settings" class="dash-console-link"><i class="bi bi-gear"></i> Settings</a>
+    </nav>
+  </header>
+
+  <div class="dash-summary-strip">
+    <div class="dash-summary-card">
+      <i class="bi bi-grid"></i>
+      <strong>{{ h.total_devices }}</strong>
+      <span>{{ t('dashboard.header.devices') }}</span>
+    </div>
+    <div class="dash-summary-card dash-summary-card--ok">
+      <i class="bi bi-arrow-up-square-fill"></i>
+      <strong>{{ h.online }}</strong>
+      <span>{{ t('dashboard.header.online') }}</span>
+    </div>
+    <div class="dash-summary-card dash-summary-card--critical">
+      <i class="bi bi-arrow-down-square-fill"></i>
+      <strong>{{ h.offline }}</strong>
+      <span>{{ t('dashboard.header.offline') }}</span>
+    </div>
+    <div class="dash-summary-card dash-summary-card--warning">
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      <strong>{{ h.warning }}</strong>
+      <span>{{ t('dashboard.header.warnings') }}</span>
+    </div>
+    <div class="dash-summary-card">
+      <i class="bi bi-radar"></i>
+      <strong>{{ k.discovered }}</strong>
+      <span>{{ t('dashboard.kpi.discovered') }}</span>
+    </div>
+    <div class="dash-summary-card">
+      <i class="bi bi-shield-check"></i>
+      <strong>{{ h.uptime_all_label }}</strong>
+      <span>Global uptime</span>
+    </div>
+  </div>
+
+  <div class="dash-monitor-layout">
+    <aside class="dash-monitor-sidebar">
+      <div class="dash-monitor-actions">
+        <a class="dash-add-monitor" href="/hosts/new"><i class="bi bi-plus-lg"></i> Add New Monitor</a>
+      </div>
+      <div class="dash-search">
+        <i class="bi bi-search"></i>
+        <span>Search monitors</span>
+      </div>
+      <div class="dash-monitor-list">
+        {% for monitor in monitors %}
+        <a class="dash-monitor-row dash-monitor-row--{{ monitor.status_class }}" href="{{ monitor.href }}">
+          <span class="dash-monitor-percent">{{ monitor.uptime_label }}</span>
+          <span class="dash-monitor-name">{{ monitor.name }}</span>
+          <span class="dash-mini-bars" aria-hidden="true">
+            {% for bar in monitor.bars[-16:] %}
+            <span class="dash-mini-bar dash-mini-bar--{{ bar.status }}"></span>
+            {% endfor %}
+          </span>
+        </a>
+        {% else %}
+        <div class="dash-empty-copy">No monitors yet.</div>
+        {% endfor %}
+      </div>
+    </aside>
+
+    <main class="dash-monitor-main">
+      {% if selected %}
+      <section class="dash-selected-monitor">
+        <div class="dash-selected-head">
+          <div>
+            <h2>{{ selected.name }}</h2>
+            <a href="{{ selected.href }}">{{ selected.address }}</a>
+          </div>
+          <span class="dash-state-pill dash-state-pill--{{ selected.status_class }}">{{ selected.display_state }}</span>
+        </div>
+
+        <div class="dash-selected-actions">
+          <a href="{{ selected.href }}" class="dash-soft-button"><i class="bi bi-eye"></i> Open</a>
+          <a href="/services/new?host_id={{ selected.id }}" class="dash-soft-button"><i class="bi bi-plus-circle"></i> Add Check</a>
+          <a href="/discovery" class="dash-soft-button"><i class="bi bi-radar"></i> Discovery</a>
+        </div>
+
+        <div class="dash-heartbeat-panel">
+          <div class="dash-heartbeat-bars">
+            {% for bar in selected.bars %}
+            <span class="dash-heartbeat-bar dash-heartbeat-bar--{{ bar.status }}" title="{{ bar.status }}"></span>
+            {% endfor %}
+          </div>
+          <div class="dash-heartbeat-caption">Checks from the last 24 hours.</div>
+        </div>
+
+        <div class="dash-metric-row">
+          <div class="dash-metric">
+            <span>Response</span>
+            <strong>{{ selected.current_response_label }}</strong>
+            <small>current</small>
+          </div>
+          <div class="dash-metric">
+            <span>Avg. Response</span>
+            <strong>{{ selected.avg_response_label }}</strong>
+            <small>24-hour</small>
+          </div>
+          <div class="dash-metric">
+            <span>Uptime</span>
+            <strong>{{ selected.uptime_label }}</strong>
+            <small>24-hour</small>
+          </div>
+          <div class="dash-metric">
+            <span>Checks</span>
+            <strong>{{ selected.service_count }}</strong>
+            <small>{{ selected.primary_service or 'configured' }}</small>
+          </div>
+        </div>
+
+        <div class="dash-chart-panel">
+          <div class="dash-chart-head">
+            <span>Response time</span>
+            <small>latest samples</small>
+          </div>
+          {% if selected.response_points %}
+          <div class="dash-response-chart">
+            {% for point in selected.response_points %}
+            <span class="dash-response-bar dash-response-bar--{{ point.status }}" style="height: {{ point.height }}%" title="{{ point.label }}"></span>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="dash-chart-empty">No response history yet.</div>
+          {% endif %}
+        </div>
+      </section>
+      {% else %}
+      <section class="dash-selected-monitor dash-selected-monitor--empty">
+        <div class="dash-selected-head">
+          <div>
+            <h2>No monitors configured</h2>
+            <a href="/discovery">Run discovery or add a device</a>
+          </div>
+          <span class="dash-state-pill dash-state-pill--unknown">Waiting</span>
+        </div>
+
+        <div class="dash-selected-actions">
+          <a href="/hosts/new" class="dash-soft-button"><i class="bi bi-plus-circle"></i> Add Device</a>
+          <a href="/discovery" class="dash-soft-button"><i class="bi bi-radar"></i> Run Discovery</a>
+        </div>
+
+        <div class="dash-heartbeat-panel dash-heartbeat-panel--empty">
+          <div class="dash-heartbeat-bars">
+            {% for _ in range(26) %}
+            <span class="dash-heartbeat-bar dash-heartbeat-bar--unknown"></span>
+            {% endfor %}
+          </div>
+          <div class="dash-heartbeat-caption">Live checks will appear here after the first monitor is added.</div>
+        </div>
+
+        <div class="dash-metric-row">
+          <div class="dash-metric">
+            <span>Response</span>
+            <strong>--</strong>
+            <small>current</small>
+          </div>
+          <div class="dash-metric">
+            <span>Avg. Response</span>
+            <strong>--</strong>
+            <small>24-hour</small>
+          </div>
+          <div class="dash-metric">
+            <span>Uptime</span>
+            <strong>--</strong>
+            <small>24-hour</small>
+          </div>
+          <div class="dash-metric">
+            <span>Checks</span>
+            <strong>0</strong>
+            <small>configured</small>
+          </div>
+        </div>
+      </section>
+      {% endif %}
+    </main>
+  </div>
+
+  <div class="dash-lower-grid">
+    <section class="dash-panel">
+      <div class="dash-panel-head"><i class="bi bi-exclamation-diamond"></i>{{ t('dashboard.problems.title') }}</div>
+      <div class="dash-panel-body">
+        {% for p in overview.problems %}
+        <a class="dash-event-row" href="{{ p.href }}">
+          <span class="dash-sev dash-sev--{{ p.severity }}">{{ p.severity }}</span>
+          <span>
+            <strong>{{ p.title }}</strong>
+            <small>{{ p.message }}</small>
+            {% if p.time %}<em>{{ p.time|datetime }}</em>{% endif %}
+          </span>
+        </a>
+        {% else %}
+        <div class="dash-empty-copy">{{ t('dashboard.problems.empty') }}</div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="dash-panel">
+      <div class="dash-panel-head"><i class="bi bi-clock-history"></i>{{ t('dashboard.activity.title') }}</div>
+      <div class="dash-panel-body">
+        {% for ev in overview.activity %}
+        <a class="dash-event-row" href="{{ ev.href or '#' }}">
+          <span class="dash-sev dash-sev--{{ 'critical' if ev.level in ['error','critical'] else 'info' }}">{{ ev.category }}</span>
+          <span>
+            <strong>{{ ev.label }}</strong>
+            {% if ev.time %}<em>{{ ev.time|datetime }}</em>{% endif %}
+          </span>
+        </a>
+        {% else %}
+        <div class="dash-empty-copy">{{ t('dashboard.activity.empty') }}</div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="dash-license-widget">
+      <div class="dash-license-head">
+        <span>{{ t('license.complimentary.badge') }}</span>
+        <strong>Professional</strong>
+      </div>
+      <div class="dash-license-line">{{ t('dashboard.license.hosts') }}: {{ lic.used_hosts }}/{% if lic.max_hosts %}{{ lic.max_hosts }}{% else %}&infin;{% endif %}</div>
+      <div class="dash-license-meter"><span style="width: {{ lic.usage_percent if lic.max_hosts else 0 }}%"></span></div>
+      <div class="dash-license-line">{{ t('dashboard.license.services') }}: {{ lic.used_services }}/{% if lic.max_services %}{{ lic.max_services }}{% else %}&infin;{% endif %}</div>
+      <div class="dash-license-line">{{ t('dashboard.license.subnets') }}: {{ lic.used_subnets }}/{% if lic.max_subnets %}{{ lic.max_subnets }}{% else %}&infin;{% endif %}</div>
+      <a href="/license" class="dash-soft-button dash-soft-button--light">{{ t('dashboard.action.go') }}</a>
+    </section>
+  </div>
+
+  {% if suggested_actions %}
+  <section class="dash-panel dash-actions-panel">
+    <div class="dash-panel-head"><i class="bi bi-list-check"></i>{{ t('dashboard.suggested') }}</div>
+    <div class="dash-action-list">
+      {% for a in suggested_actions %}
+      <div class="dash-action-row">
+        <div>
+          <strong>{{ a.title }}</strong>
+          <small>{{ a.description }}</small>
+        </div>
+        <a href="{{ a.href }}" class="dash-soft-button">{{ t('dashboard.action.go') }}</a>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if overview.show_corporate_widgets and stats.hr_attendance is defined %}
+  <div class="dash-lower-grid">
+    <section class="dash-panel">
+      <div class="dash-panel-head"><i class="bi bi-people"></i>{{ t('employee_attendance') }}</div>
+      <div class="dash-corporate-row">
+        <span class="dash-state-pill dash-state-pill--ok">{{ stats.hr_attendance.today.present_now }} present</span>
+        <span class="dash-state-pill dash-state-pill--critical">{{ stats.hr_attendance.today.absent }} absent</span>
+        <a class="dash-soft-button" href="/attendance">{{ t('dashboard.action.go') }}</a>
+      </div>
+    </section>
+    {% if stats.employee_presence is defined %}
+    <section class="dash-panel">
+      <div class="dash-panel-head"><i class="bi bi-wifi"></i>{{ t('employee_presence') }}</div>
+      <div class="dash-corporate-row">
+        <span class="dash-state-pill dash-state-pill--ok">{{ stats.employee_presence.onsite }} onsite</span>
+        <span class="dash-state-pill">{{ stats.employee_presence.remote }} remote</span>
+        <a class="dash-soft-button" href="/employee-presence">{{ t('dashboard.action.go') }}</a>
+      </div>
+    </section>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('settings.telegram.title') }}{% endblock %}
+{% block header %}{{ t('settings.title') }}{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    {% include "settings/_sidebar.html" %}
+    <div class="col-md-9">
+        {% if sent %}
+        <div class="alert alert-success">{{ t('settings.telegram.test_sent') }}</div>
+        {% endif %}
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-transparent fw-bold pt-4 d-flex justify-content-between align-items-center">
+                <span>{{ t('settings.telegram.title') }}</span>
+                {% if settings.telegram_enabled %}
+                <span class="badge bg-success">{{ t('settings.status.configured') }}</span>
+                {% else %}
+                <span class="badge bg-secondary">{{ t('settings.status.not_configured') }}</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="d-flex justify-content-between border-bottom py-2">
+                            <span class="text-muted">{{ t('settings.telegram.bot_token') }}</span>
+                            <span>{% if settings.telegram_bot_token %}<span class="badge bg-success">{{ t('about.yes') }}</span>{% else %}<span class="badge bg-danger">{{ t('about.no') }}</span>{% endif %}</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex justify-content-between border-bottom py-2">
+                            <span class="text-muted">{{ t('settings.telegram.chat_id') }}</span>
+                            <span>{% if settings.telegram_chat_id %}<span class="badge bg-success">{{ t('about.yes') }}</span>{% else %}<span class="badge bg-danger">{{ t('about.no') }}</span>{% endif %}</span>
+                        </div>
+                    </div>
+                </div>
+                <form method="POST" action="/settings/telegram/test" class="mt-4">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-send me-1"></i> {{ t('settings.telegram.test') }}
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

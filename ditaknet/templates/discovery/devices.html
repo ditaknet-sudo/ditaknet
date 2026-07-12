@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{{ t('discovery.devices') }} - {{ app_name }}{% endblock %}
+{% block page_title %}{{ t('discovery.devices') }}{% endblock %}
+{% block content %}
+<a href="/discovery/import{% if scan_id %}?scan_id={{ scan_id }}{% endif %}" class="btn btn-primary mb-3">{{ t('discovery.import') }}</a>
+<div class="table-responsive"><table class="table align-middle">
+  <thead><tr>
+    <th>IP</th>
+    <th>MAC</th>
+    <th>{{ t('discovery.type') }}</th>
+    <th>{{ t('discovery.confidence') }}</th>
+    {% if inventory_mode %}
+    <th>{{ t('discovery.status') }}</th>
+    <th>{{ t('discovery.last_seen') }}</th>
+    <th>{{ t('discovery.first_seen') }}</th>
+    <th>{{ t('discovery.scan') }}</th>
+    {% else %}
+    <th>{{ t('discovery.evidence') }}</th>
+    {% endif %}
+    <th>{{ t('link_to_employee') }}</th>
+  </tr></thead>
+  <tbody>
+  {% for d in devices %}
+    <tr>
+      <td>{{ d.ip_address }}</td>
+      <td>{{ d.mac_address or '-' }}</td>
+      <td>{{ d.detected_type }}</td>
+      <td>{{ d.confidence }}%</td>
+      {% if inventory_mode %}
+      <td><span class="badge bg-secondary">{{ d.device_state or 'seen' }}</span></td>
+      <td class="small">{{ d.last_seen_at or '—' }}</td>
+      <td class="small">{{ d.first_seen_at or '—' }}</td>
+      <td>{% if d.last_scan_id %}<a href="/discovery/scans/{{ d.last_scan_id }}">#{{ d.last_scan_id }}</a>{% else %}—{% endif %}</td>
+      {% else %}
+      <td class="small text-muted">{{ d.evidence_text or '—' }}</td>
+      {% endif %}
+      <td>
+        {% if presence_employees and not inventory_mode %}
+        <form method="post" action="/discovery/devices/{{ d.id }}/link-employee" class="d-flex gap-2">
+          <select name="employee_id" class="form-select form-select-sm">
+            {% for employee in presence_employees %}
+            <option value="{{ employee.id }}">{{ employee.full_name }}</option>
+            {% endfor %}
+          </select>
+          <select name="device_type" class="form-select form-select-sm">
+            <option value="laptop">laptop</option>
+            <option value="desktop">desktop</option>
+            <option value="phone">phone</option>
+            <option value="tablet">tablet</option>
+            <option value="other">other</option>
+          </select>
+          <button class="btn btn-sm btn-outline-primary">Link</button>
+        </form>
+        {% elif not inventory_mode %}
+        <span class="text-muted small">Corporate feature locked</span>
+        {% else %}
+        <span class="text-muted small">—</span>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9" class="text-center text-muted py-4">{{ t('discovery.no_devices_inventory') }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

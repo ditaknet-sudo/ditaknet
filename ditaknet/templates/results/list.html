@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Check Results{% endblock %}
+{% block header %}Check Results{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+        <form method="GET" action="/results" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label for="host_id" class="form-label fw-bold">Host</label>
+                <select class="form-select" id="host_id" name="host_id">
+                    <option value="">All hosts</option>
+                    {% for host in hosts %}
+                    <option value="{{ host.id }}" {% if selected_host_id == host.id %}selected{% endif %}>{{ host.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="service_id" class="form-label fw-bold">Service</label>
+                <select class="form-select" id="service_id" name="service_id">
+                    <option value="">All services</option>
+                    {% for svc in services %}
+                    <option value="{{ svc.id }}" {% if selected_service_id == svc.id %}selected{% endif %}>{{ svc.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="status" class="form-label fw-bold">Status</label>
+                <select class="form-select" id="status" name="status">
+                    <option value="">Any status</option>
+                    <option value="ok" {% if selected_status == 'ok' %}selected{% endif %}>OK</option>
+                    <option value="warning" {% if selected_status == 'warning' %}selected{% endif %}>Warning</option>
+                    <option value="critical" {% if selected_status == 'critical' %}selected{% endif %}>Critical</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Filter</button>
+                <a href="/results" class="btn btn-light">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-borderless align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">Time</th>
+                        <th>Host</th>
+                        <th>Service</th>
+                        <th>Status</th>
+                        <th>Response Time</th>
+                        <th class="pe-4">Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in results %}
+                    <tr>
+                        <td class="ps-4 text-muted small" style="white-space: nowrap;" title="{{ r.checked_at }}">{{ r.checked_at|datetime }}</td>
+                        <td><strong>{{ r.host_name }}</strong></td>
+                        <td>{{ r.service_name }}</td>
+                        <td>{{ status_badge(r.status) }}</td>
+                        <td>
+                            {% if r.response_time_ms is not none %}
+                                <span class="font-monospace text-muted">{{ "%.1f"|format(r.response_time_ms) }} ms</span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="pe-4 small text-muted text-truncate" style="max-width: 400px;" title="{{ r.message }}">{{ r.message }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-5">
+                            <i class="bi bi-journal-text fs-1 d-block mb-3 opacity-50"></i>
+                            No check results found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

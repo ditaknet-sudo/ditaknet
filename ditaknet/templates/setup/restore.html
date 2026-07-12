@@ -1,0 +1,27 @@
+{% extends "setup/base.html" %}
+{% block setup_content %}
+<h1 class="h4">{{ t('restore_backup') }}</h1>
+<p class="text-muted mb-4">{{ t('setup.restore.subtitle') }}</p>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<form method="post" action="/setup/restore" enctype="multipart/form-data">
+  <div class="mb-3">
+    <label class="form-label">{{ t('upload_backup') }}</label>
+    <input type="file" class="form-control" name="backup" accept=".zip,.sqlite3,.db,.sqlite" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">{{ t('reset_admin_login') }}</label>
+    <input type="text" class="form-control mb-2" name="admin_username" required autocomplete="username" placeholder="{{ t('login.username') }}">
+    <input type="password" class="form-control" name="admin_password" required autocomplete="new-password" placeholder="{{ t('login.password') }}">
+  </div>
+  <input type="hidden" name="confirm" value="yes">
+  <div class="alert alert-warning small">{{ t('backup_before_restore') }}</div>
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-primary">{{ t('restore_backup') }}</button>
+    <a href="/setup" class="btn btn-outline-secondary">{{ t('setup.restore.start_new') }}</a>
+  </div>
+</form>
+{% endblock %}

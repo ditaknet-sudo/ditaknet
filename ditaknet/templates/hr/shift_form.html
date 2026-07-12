@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}New shift{% endblock %}
+{% block header %}New shift{% endblock %}
+{% block content %}
+<form method="post" action="/shifts/create" class="vstack gap-3" style="max-width:480px">
+  <div><label class="form-label">Name</label><input class="form-control" name="name" required></div>
+  <div class="row g-2">
+    <div class="col"><label class="form-label">Start</label><input class="form-control" name="start_time" placeholder="09:00" required></div>
+    <div class="col"><label class="form-label">End</label><input class="form-control" name="end_time" placeholder="18:00" required></div>
+  </div>
+  <div><label class="form-label">Timezone</label><input class="form-control" name="timezone" value="UTC"></div>
+  <div class="row g-2">
+    <div class="col"><label class="form-label">Break (min)</label><input class="form-control" type="number" name="break_minutes" value="0"></div>
+    <div class="col"><label class="form-label">Late grace</label><input class="form-control" type="number" name="grace_late_minutes" value="10"></div>
+    <div class="col"><label class="form-label">Early grace</label><input class="form-control" type="number" name="grace_leave_early_minutes" value="10"></div>
+  </div>
+  <div><label class="form-label">Expected work minutes</label><input class="form-control" type="number" name="expected_work_minutes" value="480"></div>
+  <div class="form-check"><input class="form-check-input" type="checkbox" name="is_overnight" value="1"><label class="form-check-label">Overnight shift</label></div>
+  <button class="btn btn-primary" type="submit">Create</button>
+</form>
+{% endblock %}

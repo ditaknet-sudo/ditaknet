@@ -1,0 +1,11 @@
+{% extends "setup/base.html" %}
+{% block setup_content %}
+<h1 class="h4">{{ t('setup.step.system') }}</h1>
+<form method="post">
+  <div class="mb-3">
+    <label class="form-label">{{ t('setup.system.name') }}</label>
+    <input class="form-control" name="system_name" value="DitakNet" required>
+  </div>
+  <button class="btn btn-primary">{{ t('setup.continue') }}</button>
+</form>
+{% endblock %}

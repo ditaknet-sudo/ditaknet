@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ t('maintenance.title') }}{% endblock %}
+{% block page_title %}{{ t('maintenance.title') }}{% endblock %}
+{% block content %}
+<table class="table"><thead><tr><th>Title</th><th>Priority</th><th>Status</th><th>Created</th></tr></thead>
+<tbody>
+{% for task in tasks %}
+<tr><td><a href="/maintenance/{{ task.id }}">{{ task.title }}</a></td><td>{{ task.priority }}</td><td>{{ task.status }}</td><td>{{ task.created_at|datetime }}</td></tr>
+{% else %}
+<tr><td colspan="4" class="text-muted">No maintenance tasks.</td></tr>
+{% endfor %}
+</tbody></table>
+{% endblock %}
