@@ -1,24 +1,25 @@
 # ==========================================================================
 # DitakNet — TrueNAS SCALE Custom App (host networking)
 # --------------------------------------------------------------------------
-# Use this variant when LAN discovery / ping / ARP / MAC visibility matters.
-# Host network shares the TrueNAS network stack — do NOT declare ports:.
-# The UI is still reached at http://TRUENAS-IP:5833
+# Use when LAN discovery / ping / ARP / MAC visibility matters.
+# Host network shares the TrueNAS stack — do NOT declare ports:.
+# UI: http://TRUENAS-IP:5833
+# Application name in TrueNAS UI: ditaknet  (not "ditak")
 #
-# Pin DITAKNET_VERSION for production. Use latest only for testing.
+# Image is pinned. Do not use :latest in production.
+# Replace pool name "tank" below if your dataset path differs.
 # ==========================================================================
 
 services:
   ditaknet:
-    image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-latest}
-    container_name: ditaknet
+    image: ghcr.io/ditaknet-sudo/ditaknet:2.0.1
     restart: unless-stopped
     network_mode: host
     volumes:
-      - ${DITAKNET_DATA_PATH}:/app/data
-      - ${DITAKNET_LOGS_PATH}:/app/logs
-      - ${DITAKNET_BACKUPS_PATH}:/app/backups
-      - ${DITAKNET_PLUGINS_PATH}:/app/plugins
+      - /mnt/tank/apps/ditaknet/data:/app/data
+      - /mnt/tank/apps/ditaknet/logs:/app/logs
+      - /mnt/tank/apps/ditaknet/backups:/app/backups
+      - /mnt/tank/apps/ditaknet/plugins:/app/plugins
     cap_add:
       - NET_RAW
     environment:
@@ -28,7 +29,6 @@ services:
       LOG_DIR: /app/logs
       BACKUP_DIR: /app/backups
       PLUGIN_DIR: /app/plugins
-      # Optional: DISCOVERY_DNS_SERVERS: "192.168.1.1"
     healthcheck:
       test:
         [
@@ -39,5 +39,5 @@ services:
         ]
       interval: 30s
       timeout: 5s
-      start_period: 20s
-      retries: 3
+      start_period: 40s
+      retries: 5

@@ -13,6 +13,39 @@
 {% set selected = overview.selected_monitor %}
 
 <div class="dash-overview">
+  {% if update_banner %}
+  <div class="alert {% if update_banner.critical %}alert-danger{% else %}alert-info{% endif %} border mb-3" id="update-banner" role="status">
+    <div class="d-flex flex-wrap justify-content-between gap-3 align-items-start">
+      <div class="flex-grow-1">
+        <div class="fw-semibold mb-1">
+          {% if update_banner.critical %}<span class="badge text-bg-danger me-1">Critical</span>{% endif %}
+          {{ update_banner.localized_message or t('update_available') }}
+        </div>
+        <div class="small mb-1">
+          {{ t('current_version') }}: <strong>{{ update_banner.current_version }}</strong>
+          → {{ t('latest_version') }}: <strong>{{ update_banner.latest_version }}</strong>
+        </div>
+        {% if update_banner.release_notes_text %}
+        <div class="small text-muted mb-2">{{ update_banner.release_notes_text[:280] }}{% if update_banner.release_notes_text|length > 280 %}…{% endif %}</div>
+        {% endif %}
+        {% if update_banner.docker_image %}
+        <div class="small font-monospace mb-1">{{ update_banner.pull_command }}</div>
+        {% endif %}
+        {% if update_banner.upgrade_hint %}
+        <div class="small">{{ update_banner.upgrade_hint }}</div>
+        {% endif %}
+      </div>
+      <div class="d-flex flex-column gap-2">
+        <a class="btn btn-sm btn-primary" href="{{ update_banner.release_url or '/settings/updates' }}" target="_blank" rel="noopener noreferrer">{{ t('updates.view_update') }}</a>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-update-action="snooze">{{ t('updates.remind_later') }}</button>
+        {% if update_banner.can_dismiss %}
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-update-action="dismiss" data-version="{{ update_banner.latest_version }}">{{ t('updates.hide_version') }}</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <header class="dash-console-top">
     <div class="dash-brand">
       <span class="dash-brand-dot"><i class="bi bi-hdd-network"></i></span>
@@ -289,4 +322,32 @@
   </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll("[data-update-action]").forEach(function (btn) {
+    btn.addEventListener("click", async function () {
+      var action = btn.getAttribute("data-update-action");
+      var body = { action: action };
+      if (action === "dismiss") body.version = btn.getAttribute("data-version") || "";
+      if (action === "snooze") body.hours = 24;
+      try {
+        var resp = await (window.ditaknetFetch || fetch)("/api/system/update-preferences", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!resp.ok) throw new Error("Request failed");
+        var banner = document.getElementById("update-banner");
+        if (banner) banner.remove();
+      } catch (err) {
+        console.warn("Update preference failed", err);
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}

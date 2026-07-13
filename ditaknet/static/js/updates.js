@@ -132,8 +132,19 @@
     renderNotices(data);
 
     const pull = document.getElementById("docker-pull-cmd");
-    if (pull && data.ghcr_image) {
-      pull.value = `docker pull ${data.ghcr_image}`;
+    if (pull) {
+      const image = data.docker_image || data.ghcr_image || config.ghcr_image;
+      if (image) pull.value = `docker pull ${image}`;
+    }
+    const compose = document.getElementById("docker-compose-cmd");
+    if (compose && data.latest_version) {
+      const image = data.docker_image || `ghcr.io/ditaknet-sudo/ditaknet:${data.latest_version}`;
+      compose.value = [
+        `docker pull ${image}`,
+        `# set DITAKNET_VERSION=${data.latest_version} (exact tag, not latest)`,
+        "docker compose up -d",
+        "curl -fsS http://127.0.0.1:5833/health",
+      ].join("\n");
     }
     window._updatesReleaseUrl = url;
   }
@@ -154,6 +165,21 @@
   }
 
   document.getElementById("btn-check-updates")?.addEventListener("click", () => loadStatus(true));
+  document.getElementById("upd-check-enabled")?.addEventListener("change", async (ev) => {
+    const enabled = Boolean(ev.target.checked);
+    try {
+      await (window.ditaknetFetch || fetch)("/api/system/update-preferences", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      await loadStatus(false);
+    } catch (err) {
+      showAlert(err.message || i18n.check_failed || "Could not save preference", "danger");
+      ev.target.checked = !enabled;
+    }
+  });
   document.getElementById("btn-release-notes")?.addEventListener("click", () => {
     if (window._updatesReleaseUrl) window.open(window._updatesReleaseUrl, "_blank");
   });

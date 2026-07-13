@@ -103,18 +103,65 @@ class Settings(BaseSettings):
     app_support_url: str = Field(default="", validation_alias="APP_SUPPORT_URL")
     app_documentation_url: str = Field(default="", validation_alias="APP_DOCUMENTATION_URL")
 
-    # Release/update metadata. TrueNAS catalogs can inject APP_LATEST_VERSION;
-    # Docker users can point APP_UPDATE_CHECK_URL at a JSON manifest or GitHub release.
+    # Release/update metadata. Never auto-applies; notify-only.
+    # Prefer DITAKNET_UPDATE_* names; APP_UPDATE_* aliases remain for compatibility.
     app_update_check_enabled: bool = Field(
         default=True,
-        validation_alias="APP_UPDATE_CHECK_ENABLED",
+        validation_alias=AliasChoices(
+            "DITAKNET_UPDATE_CHECK_ENABLED",
+            "APP_UPDATE_CHECK_ENABLED",
+        ),
     )
-    app_update_check_url: str = Field(default="", validation_alias="APP_UPDATE_CHECK_URL")
+    app_update_channel: str = Field(
+        default="stable",
+        validation_alias=AliasChoices(
+            "DITAKNET_UPDATE_CHANNEL",
+            "APP_UPDATE_CHANNEL",
+        ),
+    )
+    app_update_check_interval_hours: float = Field(
+        default=6.0,
+        validation_alias=AliasChoices(
+            "DITAKNET_UPDATE_CHECK_INTERVAL_HOURS",
+            "APP_UPDATE_CHECK_INTERVAL_HOURS",
+        ),
+    )
+    app_update_manifest_url: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "DITAKNET_UPDATE_MANIFEST_URL",
+            "APP_UPDATE_MANIFEST_URL",
+            "APP_UPDATE_CHECK_URL",
+        ),
+    )
+    app_update_check_url: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "APP_UPDATE_CHECK_URL",
+            "DITAKNET_UPDATE_MANIFEST_URL",
+        ),
+    )
     app_update_check_timeout_seconds: float = Field(
-        default=3.0,
-        validation_alias="APP_UPDATE_CHECK_TIMEOUT_SECONDS",
+        default=8.0,
+        validation_alias=AliasChoices(
+            "DITAKNET_UPDATE_CHECK_TIMEOUT_SECONDS",
+            "APP_UPDATE_CHECK_TIMEOUT_SECONDS",
+        ),
     )
-    app_update_release_url: str = Field(default="", validation_alias="APP_UPDATE_RELEASE_URL")
+    app_update_release_url: str = Field(
+        default="https://github.com/ditaknet-sudo/ditaknet/releases",
+        validation_alias=AliasChoices(
+            "DITAKNET_UPDATE_RELEASE_URL",
+            "APP_UPDATE_RELEASE_URL",
+        ),
+    )
+    app_update_manifest_signing_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "DITAKNET_UPDATE_MANIFEST_SIGNING_KEY",
+            "APP_UPDATE_MANIFEST_SIGNING_KEY",
+        ),
+    )
     app_latest_version: str = Field(default="", validation_alias="APP_LATEST_VERSION")
     app_latest_image_tag: str = Field(default="", validation_alias="APP_LATEST_IMAGE_TAG")
 

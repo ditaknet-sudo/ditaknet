@@ -7,14 +7,14 @@ from fastapi.responses import HTMLResponse
 
 from ditaknet.config import settings
 from ditaknet.core.build_metadata import build_metadata
-from ditaknet.core.updates import get_update_status
+from ditaknet.core.updates import get_update_status, is_update_check_enabled
 from ditaknet.i18n import translate
 from ditaknet.security import require_web_permissions, verify_web_csrf
 from ditaknet.web.routes import render_template
 
 router = APIRouter(include_in_schema=False, dependencies=[Depends(verify_web_csrf)])
 
-UPDATES_ASSET_BUILD = "20260706c"
+UPDATES_ASSET_BUILD = "20260712upd"
 
 
 @router.get("/settings/updates", response_class=HTMLResponse)
@@ -37,6 +37,7 @@ async def settings_updates_page(
             "settings": settings,
             "build_meta": meta,
             "update_status": update_status,
+            "update_checks_enabled": await is_update_check_enabled(),
             "ghcr_image": ghcr,
             "github_repository": github_repo,
             "backup_configured": backup_configured,

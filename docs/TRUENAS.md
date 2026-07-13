@@ -19,9 +19,12 @@ Use immutable version tags for production. Use `latest` only for testing.
 
 Ready-made Custom App compose files:
 
-- `truenas/docker-compose.yml` — bridge networking + port `5833`
+- `truenas/docker-compose.yml` — bridge networking + port `5833` (pinned `2.0.1`, absolute paths)
 - `truenas/docker-compose.host-network.yml` — host networking (no `ports:`)
-- `truenas/.env.example` — path / version variables
+- `truenas/.env.example` — optional local `.env` notes (not required for TrueNAS paste)
+
+Name the Custom App **`ditaknet`** in the TrueNAS UI. Confirm the GHCR tag exists
+(`docker pull ghcr.io/ditaknet-sudo/ditaknet:2.0.1`) before installing.
 
 ## Required Mounts
 
@@ -74,14 +77,28 @@ Both compose variants add `NET_RAW`.
 
 ## Updates
 
+DitakNet does **not** replace the container by itself. Admins get a dashboard
+notice; you pull a **versioned** image manually.
+
+Full guide: [`UPGRADE.md`](UPGRADE.md).
+
 Before updating:
 
 1. Create a DitakNet backup from the UI.
 2. Snapshot the TrueNAS dataset that contains `data`, `logs`, `backups`, and
    optional `plugins`.
-3. Change `DITAKNET_VERSION` to the new SemVer and pull that image tag.
-4. Restart the app.
-5. Verify `http://HOST:5833/health` returns healthy.
+3. Change `DITAKNET_VERSION` to the new SemVer (never `latest` in production).
+4. Pull and restart:
+
+```bash
+docker pull ghcr.io/ditaknet-sudo/ditaknet:2.0.1
+docker compose up -d
+curl -fsS http://HOST:5833/health
+```
+
+5. Rollback by setting `DITAKNET_VERSION` to the previous tag and redeploying.
+
+Optional update-check env vars are documented in `.env.example` and `UPGRADE.md`.
 
 ## Public Repository Checklist
 

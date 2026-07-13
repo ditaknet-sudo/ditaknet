@@ -13,11 +13,23 @@ from ditaknet.config import settings
 from ditaknet.core.backup import create_backup
 from ditaknet.core.system_about import build_about_payload
 from ditaknet.core.build_metadata import build_metadata
-from ditaknet.core.updates import get_update_status
+from ditaknet.core.updates import (
+    dismiss_update_version,
+    get_update_status,
+    set_check_enabled,
+    snooze_update_banner,
+)
 from ditaknet.security import AuthenticatedUser, require_permissions
 
 router = APIRouter(tags=["system"])
 system_router = APIRouter(prefix="/system", tags=["system"])
+
+
+class UpdatePreferenceRequest(BaseModel):
+    enabled: bool | None = None
+    action: str | None = None  # snooze | dismiss
+    version: str | None = None
+    hours: int | None = None
 
 
 async def _scheduler_payload() -> dict:
@@ -76,9 +88,29 @@ async def system_version() -> dict:
 
 @system_router.get("/update")
 @system_router.get("/update-status")
-async def system_update_status() -> dict:
+async def system_update_status(
+    user: AuthenticatedUser = Depends(require_permissions("read")),
+) -> dict:
     """Return public-safe update status for Docker/TrueNAS deployments."""
-    return await get_update_status(force=False)
+    payload = await get_update_status(force=False)
+    return {
+        "current_version": payload.get("current_version"),
+        "latest_version": payload.get("latest_version"),
+        "update_available": bool(payload.get("update_available")),
+        "critical": bool(payload.get("critical")),
+        "last_checked_at": payload.get("last_checked_at"),
+        "release_url": payload.get("release_url"),
+        "changelog_url": payload.get("changelog_url"),
+        "docker_image": payload.get("docker_image"),
+        "pull_command": payload.get("pull_command"),
+        "upgrade_hint": payload.get("upgrade_hint"),
+        "localized_message": payload.get("localized_message"),
+        "show_banner": bool(payload.get("show_banner")),
+        "can_dismiss": bool(payload.get("can_dismiss")),
+        "auto_update_enabled": False,
+        "error": payload.get("error"),
+        **payload,
+    }
 
 
 @system_router.post("/check-updates")
@@ -95,11 +127,38 @@ async def system_check_updates(
     if payload.get("update_available"):
         await notify_update_available(payload)
     await notify_customer_notices(payload)
-    if payload.get("error_message") or payload.get("source") == "error":
+    if payload.get("error") or payload.get("source") == "error":
         await notify_update_check_failed(payload)
+    elif payload.get("source") == "disabled":
+        pass
     elif not payload.get("source_configured"):
         await notify_update_check_failed(payload, not_configured=True)
-    return payload
+    return {
+        "current_version": payload.get("current_version"),
+        "latest_version": payload.get("latest_version"),
+        "update_available": bool(payload.get("update_available")),
+        "critical": bool(payload.get("critical")),
+        "last_checked_at": payload.get("last_checked_at"),
+        "release_url": payload.get("release_url"),
+        "error": payload.get("error"),
+        **payload,
+    }
+
+
+@system_router.post("/update-preferences")
+async def system_update_preferences(
+    body: UpdatePreferenceRequest,
+    user: AuthenticatedUser = Depends(require_permissions("admin")),
+) -> dict:
+    """Snooze / dismiss banner or enable/disable update checks (admin only)."""
+    if body.enabled is not None:
+        await set_check_enabled(bool(body.enabled))
+    action = (body.action or "").strip().lower()
+    if action == "snooze":
+        return await snooze_update_banner(hours=int(body.hours or 24))
+    if action == "dismiss":
+        return await dismiss_update_version(body.version)
+    return await get_update_status(force=False)
 
 
 @system_router.get("/info")

@@ -308,6 +308,18 @@ async def dashboard(request: Request, user: str = Depends(get_current_user)):
                 logger.warning("Offices dashboard summary failed: {}", exc)
 
     suggested = await suggested_dashboard_actions(lang)
+    update_banner = None
+    role = str(request.session.get("role") or "").lower()
+    if role in {"admin", "super_admin", "superadmin"}:
+        try:
+            from ditaknet.core.updates import get_update_status
+
+            status = await get_update_status(force=False, lang=lang)
+            if status.get("show_banner") and status.get("update_available"):
+                update_banner = status
+        except Exception as exc:
+            logger.debug("Dashboard update banner skipped: {}", exc)
+
     return render_template(
         request,
         "dashboard.html",
@@ -316,6 +328,7 @@ async def dashboard(request: Request, user: str = Depends(get_current_user)):
             "stats": stats,
             "suggested_actions": suggested,
             "overview_asset_build": "20260711kuma",
+            "update_banner": update_banner,
             "t": lambda k, **kw: translate(k, lang, **kw),
             "refresh_seconds": 45,
         },

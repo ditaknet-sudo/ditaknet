@@ -178,10 +178,23 @@ async def lifespan(app: FastAPI):
 
     create_background_task(_startup_auto_import(), name="discovery_startup_auto_import")
 
+    try:
+        from ditaknet.core.updates import start_update_checker
+
+        start_update_checker()
+    except Exception as exc:
+        logger.warning("Update checker startup skipped: {}", exc)
+
     logger.info("{} ready", settings.app_name)
     yield
 
     logger.info("Shutting down…")
+    try:
+        from ditaknet.core.updates import stop_update_checker
+
+        await stop_update_checker()
+    except Exception:
+        pass
     if settings.scheduler_enabled:
         await scheduler.stop()
     await plugin_manager.unload_all()

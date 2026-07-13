@@ -1,29 +1,25 @@
 # ==========================================================================
 # DitakNet — TrueNAS SCALE Custom App (bridge networking)
 # --------------------------------------------------------------------------
-# Install via: Apps → Discover → Custom App / Install via YAML
-# Uses a published GHCR image (no local build).
+# Apps → Discover → Custom App / Install via YAML
+# Application name in TrueNAS UI: ditaknet  (not "ditak")
 #
-# 1) Copy truenas/.env.example → .env next to this file (or set vars in UI)
-# 2) Adjust DITAKNET_*_PATH to your pool datasets
-# 3) Pin DITAKNET_VERSION to a release (e.g. 2.0.0). Use latest only for tests.
-#
-# For better LAN discovery / ARP visibility, prefer:
-#   docker-compose.host-network.yml
+# Image is pinned. Do not use :latest in production.
+# Replace pool name "tank" below if your dataset path differs.
+# No local build — pulls from GHCR only.
 # ==========================================================================
 
 services:
   ditaknet:
-    image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-latest}
-    container_name: ditaknet
+    image: ghcr.io/ditaknet-sudo/ditaknet:2.0.1
     restart: unless-stopped
     ports:
       - "5833:5833"
     volumes:
-      - ${DITAKNET_DATA_PATH}:/app/data
-      - ${DITAKNET_LOGS_PATH}:/app/logs
-      - ${DITAKNET_BACKUPS_PATH}:/app/backups
-      - ${DITAKNET_PLUGINS_PATH}:/app/plugins
+      - /mnt/tank/apps/ditaknet/data:/app/data
+      - /mnt/tank/apps/ditaknet/logs:/app/logs
+      - /mnt/tank/apps/ditaknet/backups:/app/backups
+      - /mnt/tank/apps/ditaknet/plugins:/app/plugins
     cap_add:
       - NET_RAW
     environment:
@@ -33,8 +29,6 @@ services:
       LOG_DIR: /app/logs
       BACKUP_DIR: /app/backups
       PLUGIN_DIR: /app/plugins
-      # Optional LAN DNS for hostname discovery (set to your router if needed)
-      # DISCOVERY_DNS_SERVERS: "192.168.1.1"
     healthcheck:
       test:
         [
@@ -45,5 +39,5 @@ services:
         ]
       interval: 30s
       timeout: 5s
-      start_period: 20s
-      retries: 3
+      start_period: 40s
+      retries: 5

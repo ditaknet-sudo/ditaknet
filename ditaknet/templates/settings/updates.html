@@ -10,6 +10,21 @@
   <div class="col-md-9">
     <div class="alert alert-info">
       {{ t('updates.docker_github_notice') }}
+      <div class="small mt-1">{{ t('updates.no_auto') }}</div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+          <div class="fw-semibold">{{ t('updates.check_toggle') }}</div>
+          <div class="small text-muted">{{ t('updates.check_toggle_help') }}</div>
+        </div>
+        <div class="form-check form-switch m-0">
+          <input class="form-check-input" type="checkbox" role="switch" id="upd-check-enabled"
+                 {% if update_checks_enabled %}checked{% endif %}>
+          <label class="form-check-label" for="upd-check-enabled">{{ t('updates.enabled') }}</label>
+        </div>
+      </div>
     </div>
 
     <div class="alert alert-warning">
@@ -102,9 +117,10 @@
         <div class="mb-3">
           <label class="form-label small">{{ t('docker_update_command') }} (compose)</label>
           <div class="input-group input-group-sm">
-            <textarea class="form-control font-monospace" id="docker-compose-cmd" rows="3" readonly>docker compose pull
+            <textarea class="form-control font-monospace" id="docker-compose-cmd" rows="4" readonly>docker pull ghcr.io/ditaknet-sudo/ditaknet:{{ build_meta.version }}
+# set DITAKNET_VERSION={{ build_meta.version }} (exact tag, not latest)
 docker compose up -d
-docker compose logs -f ditaknet</textarea>
+curl -fsS http://127.0.0.1:5833/health</textarea>
             <button class="btn btn-outline-secondary" type="button" data-copy-target="docker-compose-cmd">{{ t('updates.copy') }}</button>
           </div>
         </div>
