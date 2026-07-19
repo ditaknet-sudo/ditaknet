@@ -7,10 +7,11 @@
 ## Ընդհանուր վիճակ
 
 - Սկզբնական գնահատական՝ 65%
-- Ընթացիկ փուլ՝ Փուլ 3 — Docker և TrueNAS SCALE, remote CI հաստատման փուլ
-- Ընթացիկ գնահատական՝ 89%
+- Ընթացիկ փուլ՝ Փուլ 3 — ավարտված, Փուլ 4-ը չի սկսվել
+- Ընթացիկ գնահատական՝ 90%
 - Փուլ 1-ի կարգավիճակ՝ ավարտված
 - Փուլ 2-ի կարգավիճակ՝ ավարտված, GitHub quality/image-smoke run-ը հաջող է
+- Փուլ 3-ի կարգավիճակ՝ packaging/hardening/CI աշխատանքները ավարտված են, multi-arch remote run-ը հաջող է
 - Production սերվերի գործարկում՝ չի կատարվում
 - Git վիճակ՝ local/remote `main` համաժամեցված են, reviewed commit-ը push է արված առանց force-ի
 - Թարմացման սկզբունք՝ versionավորված, backup-first, admin-confirmed, rollback-capable
@@ -56,13 +57,13 @@
 
 ## Փուլ 3 — Docker և TrueNAS SCALE (թիրախ՝ 90%)
 
-- [~] `linux/amd64` և `linux/arm64` build/runtime smoke pipeline-ը պատրաստ և տեղական static validation անցած է․ իրական երկճարտարապետական GitHub runner-ի արդյունքը սպասվում է։
-- [~] Docker bridge compose validation — definition/config-ը, deep health-ը, restart persistence-ը և legacy root-owned volume migration probe-ը պատրաստ են․ remote container run-ը սպասվում է։
+- [x] `linux/amd64` և `linux/arm64` build/runtime smoke pipeline — երկու architecture-ն էլ կառուցվել և անցել են remote runtime/security gate-երը։
+- [x] Docker bridge compose validation — config, deep health, restart persistence և legacy root-owned volume migration probe-ը remote runner-ում հաջող են։
 - [~] TrueNAS host-network compose validation — definition/config և պաշտոնական library render-ը հաջող են, իսկ իրական TrueNAS host-ի deployment փորձարկումը մնում է Փուլ 5-ում։
 - [x] Persistent mount-եր և permission ռազմավարություն — fresh Docker install-ի համար named volumes + սահմանափակ recursive initializer, bind path-երի համար explicit `568:568`, TrueNAS-ի համար Automatic Permissions/ACL տարբերակներ։
 - [x] Container hardening — non-root `568:568`, read-only rootfs, PID limit, `no-new-privileges`, `cap_drop: ALL` և միայն `NET_RAW`։
 - [x] Hash-locked Python/CI dependency set և dependency update policy։
-- [~] Երկու architecture-ի SPDX SBOM/Trivy և digest-bound provenance/attestation pipeline-ը պատրաստ է․ SBOM remote run-ը սպասվում է, իսկ attestations-ը կստեղծվեն միայն առաջին նոր SemVer release publish-ի ժամանակ։
+- [x] Երկու architecture-ի SPDX SBOM/Trivy և digest-bound provenance/attestation pipeline-ը պատրաստ է․ երկու SBOM/Trivy gate-երը remote run-ում հաջող են, իսկ attestations-ը կստեղծվեն առաջին նոր SemVer release publish-ի ժամանակ։
 - [x] TrueNAS catalog metadata/schema validation — duplicate-key/static gate և pinned official `truenas/apps` library-ով 4 տարբերակի render։
 - [x] Install, upgrade և rollback փաստաթղթեր՝ legacy bind → named-volume փոփոխության պարտադիր preflight-ով և offline recovery-ով։
 
@@ -71,7 +72,7 @@
 - [ ] `stable` և `beta` update channel-ներ։
 - [x] Signing key-ի առկայության դեպքում fail-closed signature verification՝ առանց unsigned fallback-ի։
 - [ ] Production signing key provisioning, ստորագրված manifest-ի հրապարակում և default-ով պարտադիր signature policy։
-- [~] Immutable exact-version GHCR tag guard — pipeline-ը պատրաստ է, առաջին remote run-ը սպասվում է։
+- [~] Immutable exact-version GHCR tag guard — transactional pipeline-ը պատրաստ է, բայց իրական guard/publish-ը կաշխատի միայն առաջին նոր SemVer release-ի ժամանակ։
 - [ ] Հրապարակված digest-ի ստուգում և update manifest/release metadata-ում պահպանում։
 - [ ] Update-ից առաջ պարտադիր SQLite backup։
 - [ ] Version/migration compatibility validation։
@@ -163,8 +164,14 @@
 - Ավելացվեցին install/upgrade/rollback, update/migration safety և GitHub release operation ուղեցույցները։ Հստակ գրանցվեց, որ հրապարակված `2.0.1`-ը legacy amd64 artifact է և նոր hardening/multi-arch հնարավորությունները պահանջում են նոր SemVer release։
 - Մաքուր Python 3.11 hash-locked միջավայրում lock check, `pip check`, `pip-audit`, Bandit, compile և ամբողջ suite-ը հաջող են՝ **144 passed, 0 failed, 0 warnings**։
 - Տեղական Docker daemon-ը անջատված է, production server չի գործարկվել։ Երկու architecture-ի իրական image build/smoke/scan-ը կկատարվի միայն push-ից հետո մեկուսացված GitHub Actions runner-ում։
+- `379bd8f` implementation commit-ը fast-forward push արվեց `origin/main`։ Առաջին [remote run #29705296663](https://github.com/ditaknet-sudo/ditaknet/actions/runs/29705296663)-ում quality gate-ը և երկու architecture-ի build-երը հաջող էին, բայց smoke inspection assertion-ը չընդունեց Docker Engine 29-ի canonical `CAP_NET_RAW` անունը։ Application/runtime defect չէր գրանցվել։
+- Assertion-ը normalize արվեց՝ `NET_RAW` և `CAP_NET_RAW` համարժեք ձևերը ընդունելով, միաժամանակ շարունակելով մերժել այլ capability-ները և privileged runtime-ը։ Ուղղումը commit արվեց `1e1654e`-ով և fast-forward push արվեց։
+- Վերջնական [GitHub Actions run #29705551390](https://github.com/ditaknet-sudo/ditaknet/actions/runs/29705551390) ավարտվեց **success**․ quality/security/configuration gate, **144 passed**, `linux/amd64` և `linux/arm64` build-եր, non-root/read-only runtime smoke, legacy nested ownership migration, `/health/deep`, restart persistence, երկու architecture-ի Trivy report/blocking scan և SPDX SBOM generation՝ բոլորը հաջող։
+- `main` push-ի publish job-ը սպասվածի պես **skipped** է․ այս փուլում Git tag, GitHub Release կամ նոր GHCR image չի հրապարակվել, և production server չի գործարկվել։
+- Մաքրվեցին workspace-ի **19 cache պանակ** և `%TEMP%`-ի **9 `ditaknet-*` test/tool/log նյութ**։ Դրանք տեղափոխվեցին Windows Recycle Bin և վերականգնելի են։ Վերջնական մնացորդը՝ **0**։
+- Իրական `data/ditaknet.db`-ը չօգտագործվեց և չփոփոխվեց․ SHA-256-ը մնաց `6B6F9F5CC4CB9601E72AEFB5A33F29961BFD2981D20264FAB157BAF68F7FFB40`, չափը՝ `6721536`, UTC mtime-ը՝ `2026-07-14T07:54:41.4443873Z`։
 
 ## Հաջորդ հաշվետվություն
 
-Փուլ 3-ի fast-forward push-ը, երկճարտարապետական GitHub Actions build/smoke/scan
-արդյունքը, վերջնական test count-ը, cache cleanup-ը և Phase 3-ի ամփոփ կարգավիճակը։
+Փուլ 4-ը կսկսվի միայն առանձին հրահանգով՝ update channel-ներ, production signing,
+manifest/release digest synchronization և նոր SemVer release-ի վերահսկվող պատրաստում։
