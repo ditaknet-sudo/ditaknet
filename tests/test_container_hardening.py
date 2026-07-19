@@ -110,6 +110,8 @@ def test_release_workflow_preserves_and_gates_both_architecture_artifacts() -> N
     assert "--read-only" in workflow
     assert "--cap-drop ALL" in workflow
     assert "--cap-add NET_RAW" in workflow
+    assert 'removeprefix("CAP_")' in workflow
+    assert 'host["Privileged"] is False' in workflow
     assert "--security-opt no-new-privileges:true" in workflow
     assert "/health/deep" in workflow
     assert 'payload["overall_status"] == "pass"' in workflow

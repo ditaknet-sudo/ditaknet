@@ -488,12 +488,23 @@ jobs:
 
           container = json.load(open(sys.argv[1], encoding="utf-8"))[0]
           host = container["HostConfig"]
-          assert container["Config"]["User"] == "568:568"
-          assert host["ReadonlyRootfs"] is True
-          assert host["CapDrop"] == ["ALL"]
-          assert host["CapAdd"] == ["NET_RAW"]
-          assert host["PidsLimit"] == 256
-          assert "no-new-privileges:true" in host["SecurityOpt"]
+          normalize_caps = lambda values: {
+              value.upper().removeprefix("CAP_") for value in (values or [])
+          }
+          assert container["Config"]["User"] == "568:568", container["Config"]["User"]
+          assert host["ReadonlyRootfs"] is True, host["ReadonlyRootfs"]
+          assert host["Privileged"] is False, host["Privileged"]
+          assert normalize_caps(host["CapDrop"]) == {"ALL"}, host["CapDrop"]
+          # Docker Engine 29 may return the canonical CAP_NET_RAW name even
+          # when the CLI accepted NET_RAW. They represent the same allowlist.
+          assert normalize_caps(host["CapAdd"]) == {"NET_RAW"}, host["CapAdd"]
+          assert host["PidsLimit"] == 256, host["PidsLimit"]
+          security = set(host["SecurityOpt"] or [])
+          assert security & {
+              "no-new-privileges",
+              "no-new-privileges:true",
+              "no-new-privileges=true",
+          }, security
           mounts = {item["Destination"]: item for item in container["Mounts"]}
           for destination in ("/app/data", "/app/logs", "/app/backups", "/app/plugins"):
               assert mounts[destination]["Type"] == "volume", mounts[destination]
