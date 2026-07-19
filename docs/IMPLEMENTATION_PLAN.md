@@ -7,12 +7,12 @@
 ## Ընդհանուր վիճակ
 
 - Սկզբնական գնահատական՝ 65%
-- Ընթացիկ փուլ՝ Փուլ 2 — թեստեր և CI
-- Ընթացիկ գնահատական՝ 88%
+- Ընթացիկ փուլ՝ Փուլ 3 — Docker և TrueNAS SCALE
+- Ընթացիկ գնահատական՝ 89%
 - Փուլ 1-ի կարգավիճակ՝ ավարտված
-- Փուլ 2-ի կարգավիճակ՝ կոդային աշխատանքն ավարտված, առաջին GitHub image-smoke run-ը սպասվում է
+- Փուլ 2-ի կարգավիճակ՝ ավարտված, GitHub quality/image-smoke run-ը հաջող է
 - Production սերվերի գործարկում՝ չի կատարվում
-- Git վիճակ՝ local `main`-ը հիմնված է `origin/main`-ի պահպանված պատմության վրա, reviewed commit և clean-clone validation-ը պատրաստ են, push-ը սպասվում է
+- Git վիճակ՝ local/remote `main` համաժամեցված են, reviewed commit-ը push է արված առանց force-ի
 - Թարմացման սկզբունք՝ versionավորված, backup-first, admin-confirmed, rollback-capable
 
 ## Կարգավիճակների նշանակությունը
@@ -50,8 +50,8 @@
 - [x] Ping/TCP/HTTP checks և scheduler թեստեր։
 - [x] Update manifest ու signature validation թեստեր։
 - [x] Backup/restore compatibility թեստեր։
-- [~] Docker build և `/health` smoke test — CI gate-ը պատրաստ է, առաջին GitHub run-ը սպասվում է։
-- [~] `origin/main` պատմությունը պահպանող reviewed commit և clean-clone verification՝ պատրաստ, push և առաջին remote CI run՝ սպասվում են։
+- [x] Docker build, production container `/health`/web smoke և SPDX SBOM՝ GitHub runner-ում հաջող։
+- [x] `origin/main` պատմությունը պահպանող reviewed commit, clean-clone verification, fast-forward push և առաջին remote CI run։
 - [x] GitHub Actions pipeline-ի սահմանում և static validation՝ quality, image-smoke և immutable publish gate-երով։
 
 ## Փուլ 3 — Docker և TrueNAS SCALE (թիրախ՝ 90%)
@@ -62,7 +62,7 @@
 - [ ] Persistent dataset mount-եր և permission ռազմավարություն։
 - [ ] Container hardening և նվազագույն capabilities։
 - [x] Hash-locked Python/CI dependency set և dependency update policy։
-- [~] Release SBOM և provenance/attestation՝ exact smoke-tested artifact-ի համար — implementation/static validation-ը պատրաստ է, remote execution-ը սպասվում է։
+- [~] Release SBOM և provenance/attestation՝ exact smoke-tested artifact-ի համար — SBOM-ի remote execution-ը հաջող է, digest-bound attestations-ը կաշխատեն առաջին release publish-ի ժամանակ։
 - [ ] TrueNAS catalog metadata/schema validation։
 - [ ] Install, upgrade և rollback փաստաթղթեր։
 
@@ -146,8 +146,10 @@
 - Վերջնական static validation՝ dependency locks current, Python compile՝ **160 ֆայլ**, release/version consistency՝ **OK 2.0.1**, actionlint/Bandit/secret scan և երեք Compose config՝ հաջող։
 - Reviewed commit-ի առանձին clean clone-ը նորից անցավ lock/release validation-ը և ամբողջ suite-ը՝ **131 passed, 0 failed, 0 warnings**։
 - Մաքրվեցին workspace-ի **20 cache պանակ** և `%TEMP%`-ի **21 `ditaknet-*` test/tool պանակ**։ Վերջնական մնացորդը՝ **0**, իսկ իրական SQLite DB-ի SHA-256-ը մնաց անփոփոխ։
+- `f7291b4` reviewed commit-ը fast-forward push արվեց `origin/main`՝ պահպանելով remote deletion commit-ի պատմությունը և առանց force-push-ի։
+- GitHub Actions [run #29703679380](https://github.com/ditaknet-sudo/ditaknet/actions/runs/29703679380) ավարտվեց հաջող․ quality job-ի բոլոր gate-երը, production Docker build, `/health`/web smoke և smoke-tested image-ի SPDX SBOM generation-ը անցան։ Release publish job-ը սպասվածի պես skip արվեց `main` push-ի համար։
 
 ## Հաջորդ հաշվետվություն
 
-Reviewed commit, clean-clone validation, cache cleanup, `origin/main` push և
-առաջին GitHub Actions quality/image-smoke run-ի արդյունքը։
+Փուլ 3-ի Docker/TrueNAS աշխատանքները՝ multi-arch build, container hardening,
+dataset permissions, catalog validation և install/upgrade/rollback փաստաթղթեր։
