@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Employee Presence Settings{% endblock %}
+{% block page_title %}Employee Presence Settings{% endblock %}
+{% block page_subtitle %}
+<p class="text-muted mb-0">Corporate-only detection settings and privacy notice.</p>
+{% endblock %}
+{% block content %}
+{% if saved %}<div class="alert alert-success">Settings saved.</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<div class="card shadow-sm border-0">
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      <div class="col-12">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" value="1" name="configured_enabled" id="configured_enabled" {% if settings.configured_enabled %}checked{% endif %}>
+          <label class="form-check-label fw-semibold" for="configured_enabled">Enable Employee Presence Monitoring</label>
+        </div>
+        <div class="form-text">License must allow this feature before it can be enabled.</div>
+      </div>
+      <div class="col-md-4"><label class="form-label">Online grace minutes</label><input class="form-control" type="number" min="1" name="presence_online_grace_minutes" value="{{ settings.presence_online_grace_minutes }}"></div>
+      <div class="col-md-4"><label class="form-label">Away after minutes</label><input class="form-control" type="number" min="1" name="presence_away_after_minutes" value="{{ settings.presence_away_after_minutes }}"></div>
+      <div class="col-md-4"><label class="form-label">Offline after minutes</label><input class="form-control" type="number" min="1" name="presence_offline_after_minutes" value="{{ settings.presence_offline_after_minutes }}"></div>
+      <div class="col-12">
+        <label class="form-label">Privacy notice text</label>
+        <textarea class="form-control" name="privacy_notice_text" rows="5">{{ settings.privacy_notice_text }}</textarea>
+      </div>
+      <div class="col-12">
+        <div class="alert alert-info mb-0">
+          Use this feature only with employee notice and company policy approval. It does not collect GPS location,
+          browser fingerprints, private internet traffic, visited websites, or screen time.
+        </div>
+      </div>
+      <div class="col-12">
+        <button class="btn btn-primary" type="submit">Save settings</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

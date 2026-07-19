@@ -1,0 +1,47 @@
+{% extends "setup/base.html" %}
+{% block setup_content %}
+<h1 class="h4">{{ t('setup.step.purpose') }}</h1>
+<p class="text-muted mb-4">{{ t('setup.purpose.subtitle') }}</p>
+
+<form method="post">
+  <div class="d-flex flex-column gap-2 mb-4">
+    {% for uc in use_cases %}
+    <label class="usecase-card d-flex align-items-start gap-3 p-3 border rounded cursor-pointer {% if loop.first %}usecase-card--selected{% endif %}"
+           style="cursor:pointer; transition: border-color .15s, background .15s;">
+      <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="use_case"
+             value="{{ uc.id }}" {% if loop.first %}checked{% endif %}
+             onchange="document.querySelectorAll('.usecase-card').forEach(c=>c.classList.remove('usecase-card--selected'));this.closest('.usecase-card').classList.add('usecase-card--selected')">
+      <div class="flex-grow-1 min-w-0">
+        <strong>{{ t(uc.title_key) }}</strong>
+        <div class="small text-muted mt-1">{{ t(uc.description_key) }}</div>
+      </div>
+    </label>
+    {% endfor %}
+  </div>
+
+  <button class="btn btn-primary w-100">{{ t('setup.continue') }}</button>
+</form>
+
+<style>
+.usecase-card {
+  background: var(--dn-surface);
+  color: var(--dn-text-primary);
+  border-color: var(--dn-border) !important;
+}
+.usecase-card strong { color: var(--dn-text-primary); }
+.usecase-card .text-muted { color: var(--dn-text-secondary) !important; }
+.usecase-card:hover,
+.usecase-card--selected {
+  border-color: var(--dn-info) !important;
+  background: color-mix(in srgb, var(--dn-info) 14%, var(--dn-surface));
+}
+.usecase-card .form-check-input {
+  background-color: var(--dn-input-bg);
+  border-color: var(--dn-input-border);
+}
+.usecase-card .form-check-input:checked {
+  background-color: var(--dn-info);
+  border-color: var(--dn-info);
+}
+</style>
+{% endblock %}

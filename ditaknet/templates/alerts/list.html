@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Alerts{% endblock %}
+{% block header %}Alerts{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="btn-group" role="group" aria-label="Alert filters">
+        <a class="btn btn-sm {% if filter == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="/alerts?filter=all">All</a>
+        <a class="btn btn-sm {% if filter == 'active' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="/alerts?filter=active">Active</a>
+        <a class="btn btn-sm {% if filter == 'resolved' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="/alerts?filter=resolved">Resolved</a>
+    </div>
+    <span class="text-muted small">{{ alerts|length }} alert(s)</span>
+</div>
+
+{% if filter in ['all', 'active'] and active_alerts %}
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-transparent fw-bold">Active Alerts</div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-4">Time</th>
+                    <th>Host</th>
+                    <th>Service</th>
+                    <th>Severity</th>
+                    <th>Message</th>
+                    <th class="pe-4 text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for a in active_alerts %}
+            <tr>
+                <td class="ps-4 text-muted small">{{ a.created_at|datetime }}</td>
+                <td><strong>{{ a.host_name }}</strong></td>
+                <td>{{ a.service_name }}</td>
+                <td>{{ status_badge(a.severity) }}</td>
+                <td><span class="small">{{ a.message.split('\n')[0] }}</span></td>
+                <td class="pe-4 text-end">
+                    <div class="btn-group btn-group-sm">
+                        {% if not a.acknowledged %}
+                        <form method="POST" action="/alerts/{{ a.id }}/acknowledge" class="d-inline">
+                            <button type="submit" class="btn btn-outline-secondary">Ack</button>
+                        </form>
+                        {% endif %}
+                        <form method="POST" action="/alerts/{{ a.id }}/resolve" class="d-inline">
+                            <button type="submit" class="btn btn-outline-success">Resolve</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% elif filter == 'active' %}
+<div class="alert alert-success">No active alerts.</div>
+{% endif %}
+
+{% if filter in ['all', 'resolved'] %}
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-transparent fw-bold">
+        {% if filter == 'resolved' %}Resolved Alerts{% else %}All Alerts{% endif %}
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover table-borderless align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-4">Time</th>
+                    <th>Host</th>
+                    <th>Service</th>
+                    <th>Severity</th>
+                    <th>Status</th>
+                    <th>Message</th>
+                    <th class="pe-4 text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in alerts %}
+                <tr>
+                    <td class="ps-4 text-muted small" title="{{ a.created_at }}">{{ a.created_at|datetime }}</td>
+                    <td><strong>{{ a.host_name }}</strong></td>
+                    <td>{{ a.service_name }}</td>
+                    <td>{{ status_badge(a.severity) }}</td>
+                    <td>
+                        {% if a.is_active %}
+                        <span class="badge bg-danger">Active</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Resolved</span>
+                        {% endif %}
+                        {% if a.acknowledged %}
+                        <span class="badge bg-light text-secondary border">Acked</span>
+                        {% endif %}
+                    </td>
+                    <td><span class="small text-truncate d-inline-block" style="max-width: 300px;" title="{{ a.message }}">{{ a.message.split('\n')[0] }}</span></td>
+                    <td class="pe-4 text-end">
+                        {% if a.is_active %}
+                        <div class="btn-group btn-group-sm">
+                            {% if not a.acknowledged %}
+                            <form method="POST" action="/alerts/{{ a.id }}/acknowledge" class="d-inline">
+                                <button type="submit" class="btn btn-outline-primary py-0">Ack</button>
+                            </form>
+                            {% endif %}
+                            <form method="POST" action="/alerts/{{ a.id }}/resolve" class="d-inline">
+                                <button type="submit" class="btn btn-outline-success py-0">Resolve</button>
+                            </form>
+                        </div>
+                        {% else %}
+                        <span class="text-muted small">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-5">
+                        <i class="bi bi-bell fs-1 d-block mb-3 opacity-50"></i>
+                        No alerts found.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

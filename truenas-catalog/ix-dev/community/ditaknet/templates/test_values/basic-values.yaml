@@ -1,0 +1,47 @@
+# Values used by truenas/apps CI to render the DitakNet template.
+# Paths are fake CI placeholders — not real customer paths.
+
+images:
+  image:
+    repository: ghcr.io/ditaknet-sudo/ditaknet
+    tag: "2.0.1"
+
+consts:
+  ditaknet_container_name: ditaknet
+
+TZ: Etc/UTC
+
+ditaknet:
+  image_tag: "2.0.1"
+  additional_envs: []
+
+network:
+  host_network: false
+  web_port:
+    bind_mode: published
+    port_number: 5833
+
+storage:
+  data:
+    type: ix_volume
+    ix_volume_config:
+      dataset_name: ditaknet_data
+  logs:
+    type: ix_volume
+    ix_volume_config:
+      dataset_name: ditaknet_logs
+  backups:
+    type: ix_volume
+    ix_volume_config:
+      dataset_name: ditaknet_backups
+  plugins:
+    type: ix_volume
+    ix_volume_config:
+      dataset_name: ditaknet_plugins
+
+resources:
+  limits:
+    cpus: 2
+    memory: 2048
+
+ci: true

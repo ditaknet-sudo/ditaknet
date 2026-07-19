@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ t('monthly_report') }}{% endblock %}
+{% block header %}{{ t('attendance_reports') }}{% endblock %}
+{% block actions %}
+<a class="btn btn-outline-secondary btn-sm" href="/attendance">Daily</a>
+{% if can_export %}
+<a class="btn btn-primary btn-sm" href="/attendance/reports/monthly/export.csv?month={{ month }}&department_id={{ filters.department_id }}&group_id={{ filters.group_id }}&employee_id={{ filters.employee_id }}">Export CSV</a>
+{% endif %}
+{% endblock %}
+{% block content %}
+<form class="row g-2 mb-3" method="get" action="/attendance/reports/monthly">
+  <div class="col-md-2"><input class="form-control" type="month" name="month" value="{{ month }}"></div>
+  <div class="col-md-2">
+    <select class="form-select" name="department_id">
+      <option value="">All departments</option>
+      {% for d in departments %}<option value="{{ d.id }}" {% if filters.department_id == d.id|string %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select class="form-select" name="group_id">
+      <option value="">All groups</option>
+      {% for g in groups %}<option value="{{ g.id }}" {% if filters.group_id == g.id|string %}selected{% endif %}>{{ g.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select class="form-select" name="employee_id">
+      <option value="">All employees</option>
+      {% for e in employees %}<option value="{{ e.id }}" {% if filters.employee_id == e.id|string %}selected{% endif %}>{{ e.full_name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2"><button class="btn btn-outline-primary w-100" type="submit">Filter</button></div>
+</form>
+{% if report.summary.low_confidence_records %}
+<div class="alert alert-warning">{{ t('confidence_warning') }} ({{ report.summary.low_confidence_records }} low-confidence records)</div>
+{% endif %}
+<div class="table-responsive">
+<table class="table table-sm table-hover">
+  <thead><tr>
+    <th>Employee</th><th>Department</th><th>Group</th><th>Present</th><th>Absent</th><th>Late</th>
+    <th>{{ t('worked_hours') }}</th><th>{{ t('overtime_hours') }}</th><th>{{ t('absence_hours') }}</th>
+    <th>Summary</th>
+  </tr></thead>
+  <tbody>
+  {% for row in report.rows %}
+    <tr {% if row.low_confidence_warning %}class="table-warning"{% endif %}>
+      <td>{{ row.employee_name }}</td>
+      <td>{{ row.department }}</td>
+      <td>{{ row.group }}</td>
+      <td>{{ row.present_days }}</td>
+      <td>{{ row.absent_days }}</td>
+      <td>{{ row.late_days }}</td>
+      <td>{{ row.total_worked_hours }}h {{ row.total_worked_minutes_remainder }}m</td>
+      <td>{{ (row.overtime_minutes // 60) }}h {{ row.overtime_minutes % 60 }}m</td>
+      <td>{{ (row.absence_minutes // 60) }}h {{ row.absence_minutes % 60 }}m</td>
+      <td class="small">{{ row.worked_summary_en }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="10" class="text-center text-muted py-4">No monthly data.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

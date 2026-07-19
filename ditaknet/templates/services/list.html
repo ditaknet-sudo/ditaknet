@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Services{% endblock %}
+{% block header %}Services{% endblock %}
+
+{% block actions %}
+<a href="/services/new" class="btn btn-primary">
+    <i class="bi bi-plus-lg me-1"></i> Add Service
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-borderless align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">Service</th>
+                        <th>Host</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Last Check</th>
+                        <th class="pe-4 text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for svc in services %}
+                    <tr>
+                        <td class="ps-4 fw-bold">
+                            {{ svc.name }}
+                            {% if not svc.enabled %}
+                            <span class="badge bg-secondary ms-2 bg-opacity-10 text-secondary border border-secondary border-opacity-25">Disabled</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ svc.host_name }}</td>
+                        <td><span class="badge bg-secondary text-uppercase">{{ svc.check_type }}</span></td>
+                        <td>{{ status_badge(svc.current_state) }}</td>
+                        <td class="text-muted small">
+                            {% if svc.latest_check %}
+                            <span title="{{ svc.latest_check.checked_at }}">{{ svc.latest_check.checked_at|datetime }}</span>
+                            {% else %}
+                            Never
+                            {% endif %}
+                        </td>
+                        <td class="pe-4 text-end">
+                            <div class="btn-group">
+                                <form action="/services/{{ svc.id }}/run-now" method="POST" class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-outline-warning" title="Run Now">
+                                        <i class="bi bi-play-fill"></i> Run Now
+                                    </button>
+                                </form>
+                                <a href="/services/{{ svc.id }}" class="btn btn-sm btn-outline-secondary" title="View Details">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <a href="/services/{{ svc.id }}/edit" class="btn btn-sm btn-outline-secondary" title="Edit Service">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form action="/services/{{ svc.id }}/delete" method="POST" class="d-inline" onsubmit="return confirm('Delete this service?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Service">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-5">
+                            <i class="bi bi-gear-wide-connected fs-1 d-block mb-3 opacity-50"></i>
+                            No services found. Click "Add Service" to get started.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

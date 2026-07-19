@@ -1,0 +1,54 @@
+{% extends "setup/base.html" %}
+{% block setup_card_width %}820px{% endblock %}
+{% block setup_content %}
+<h1 class="h4">{{ t('setup.subnet.title') if t is defined else 'Enter networks to monitor' }}</h1>
+<p class="text-muted">
+  {{ t('setup.subnet.subtitle') if t is defined else 'Type the private CIDR networks yourself. Any prefix is fine — /16, /24, /32, or others. DitakNet does not guess or limit the mask for you.' }}
+</p>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<form method="post" class="mb-4">
+  <label class="form-label" for="subnets">{{ t('setup.discovery.manual_subnet') }}</label>
+  <textarea
+    class="form-control font-monospace"
+    id="subnets"
+    name="subnets"
+    rows="4"
+    placeholder="192.168.1.0/24&#10;10.0.0.5/32"
+    required
+  >{{ selected_subnet or '' }}</textarea>
+  <div class="form-text">
+    {{ t('setup.subnet.hint') if t is defined else 'One CIDR per line (or comma-separated). Only private ranges are accepted.' }}
+  </div>
+  <div class="d-flex gap-2 flex-wrap mt-3">
+    <button class="btn btn-primary" name="action" value="scan">{{ t('discovery.start_quick_scan') }}</button>
+    <button class="btn btn-link" name="action" value="skip" formnovalidate>{{ t('setup.discovery.skip') }}</button>
+    <a class="btn btn-link" href="/setup/admin">{{ t('common.back') }}</a>
+  </div>
+</form>
+
+{% if local_subnets %}
+<section class="mb-3">
+  <h2 class="h6">{{ t('setup.discovery.detected_network') }}</h2>
+  <p class="small text-muted mb-2">
+    {{ t('setup.subnet.detected_hint') if t is defined else 'Optional: click to fill the field with a network seen on this server. You can still edit it.' }}
+  </p>
+  <div class="d-flex flex-wrap gap-2">
+    {% for subnet in local_subnets %}
+    <button
+      type="button"
+      class="btn btn-outline-secondary btn-sm font-monospace"
+      onclick="document.getElementById('subnets').value='{{ subnet }}'"
+    >{{ subnet }}</button>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<p class="small text-muted mb-0">
+  {{ t('setup.subnet.docker_hint') if t is defined else 'Container networking can hide the host LAN. If nothing is detected, enter the subnet manually.' }}
+</p>
+{% endblock %}

@@ -1,0 +1,39 @@
+app_version: "2.0.1"
+capabilities:
+  - description: DitakNet needs NET_RAW for ICMP / discovery checks.
+    name: NET_RAW
+categories:
+  - monitoring
+  - networking
+changelog_url: https://github.com/ditaknet-sudo/ditaknet/releases
+date_added: "2026-07-12"
+description: Self-hosted local network discovery, monitoring, alerts, and licensing dashboard.
+home: https://github.com/ditaknet-sudo/ditaknet
+host_mounts: []
+icon: https://media.sys.truenas.net/apps/ditaknet/icons/icon.svg
+keywords:
+  - monitoring
+  - network
+  - discovery
+  - lan
+  - ditaknet
+lib_version: 2.3.4
+lib_version_hash: REPLACE_WITH_UPSTREAM_LIBRARY_HASH
+maintainers:
+  - email: support@example.com
+    name: DitakNet
+    url: https://github.com/ditaknet-sudo/ditaknet
+name: ditaknet
+run_as_context:
+  - description: DitakNet container; prefer non-root where possible. Discovery may need elevated caps (NET_RAW).
+    gid: 568
+    group_name: apps
+    uid: 568
+    user_name: apps
+screenshots: []
+sources:
+  - https://github.com/ditaknet-sudo/ditaknet
+  - https://ghcr.io/ditaknet-sudo/ditaknet
+title: DitakNet
+train: community
+version: 1.0.0

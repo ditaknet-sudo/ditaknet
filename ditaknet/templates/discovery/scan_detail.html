@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Scan #{{ scan.id }} - {{ app_name }}{% endblock %}
+{% block page_title %}{{ t('discovery.scan_detail') }}{% endblock %}
+
+{% block extra_head %}
+<link href="/static/css/discovery-scan.css" rel="stylesheet">
+{% endblock %}
+
+{% block actions %}
+{% if scan.status == 'running' %}
+<form method="post" action="/discovery/scans/{{ scan.id }}/cancel" class="d-inline">
+  <button type="submit" class="btn btn-outline-danger btn-sm">
+    <i class="bi bi-stop-circle"></i> {{ t('discovery.cancel') }}
+  </button>
+</form>
+{% endif %}
+<a href="/discovery/import?scan_id={{ scan.id }}" id="scan-import-btn" class="btn btn-primary btn-sm" {% if scan.status == 'running' or progress.found == 0 %}disabled{% endif %}>
+  <i class="bi bi-download"></i> {{ t('discovery.import') }}
+</a>
+{% endblock %}
+
+{% block content %}
+{% if container_limited %}
+<div class="alert alert-warning small mb-3">
+  <i class="bi bi-exclamation-triangle"></i>
+  {{ t('discovery.container_limitations') }}
+</div>
+{% endif %}
+<div id="discovery-scan-root" data-config='{{ scan_config_json | safe }}'></div>
+
+<div class="scan-hero">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+    <div>
+      <div class="small text-white-50 mb-1">#{{ scan.id }} · {{ scan.profile|upper }}</div>
+      <h2 class="h4 mb-2"><i class="bi bi-broadcast"></i> {{ t('discovery.scan_subnet') }} <span id="scan-subnet-text">{{ subnets[0] if subnets else '—' }}</span></h2>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span id="scan-status-badge" class="scan-status-badge scan-status-{{ scan.status }}">
+          <span id="scan-status-text">{{ scan.status|upper }}</span>
+          {% if scan.status == 'running' %}<span class="spinner-border spinner-border-sm"></span>{% endif %}
+        </span>
+        <span class="small text-white-50">{{ t('discovery.started_at') }}: <span id="scan-started-text">{{ scan.started_at or scan.created_at }}</span></span>
+        <span class="small text-white-50">{{ t('discovery.elapsed_time') }}: <span id="scan-elapsed-text">—</span></span>
+      </div>
+    </div>
+  </div>
+  <div id="scan-stage-stepper" class="scan-stage-stepper"></div>
+</div>
+
+<div class="scan-summary-grid">
+  <div class="scan-card"><div class="scan-card-label">{{ t('discovery.total_targets') }}</div><div class="scan-card-value" id="scan-total-hosts">{{ progress.total }}</div></div>
+  <div class="scan-card"><div class="scan-card-label">{{ t('discovery.scanned') }}</div><div class="scan-card-value" id="scan-scanned-hosts">{{ progress.scanned }}</div></div>
+  <div class="scan-card"><div class="scan-card-label">{{ t('discovery.remaining') }}</div><div class="scan-card-value" id="scan-remaining-hosts">{{ progress.remaining }}</div></div>
+  <div class="scan-card"><div class="scan-card-label">{{ t('discovery.found_devices') }}</div><div class="scan-card-value" id="scan-found-devices">{{ progress.found }}</div></div>
+  <div class="scan-card"><div class="scan-card-label">{{ t('discovery.current_stage') }}</div><div class="scan-card-value" style="font-size:1rem" id="scan-current-stage">{{ progress.stage|replace('_',' ') }}</div></div>
+  <div class="scan-card"><div class="scan-card-label">{{ t('discovery.current_ip') }}</div><div class="scan-card-value" style="font-size:1rem" id="scan-current-ip">{{ progress.current_ip or '—' }}</div></div>
+</div>
+
+<div class="scan-progress-panel p-3 p-md-4">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <strong>{{ t('discovery.scan_progress') }}</strong>
+    <span class="fs-4 fw-bold text-primary" id="scan-progress-percent">{{ progress.percent }}%</span>
+  </div>
+  <div class="scan-progress-bar-wrap mb-2">
+    <div id="scan-progress-bar" class="scan-progress-bar-fill {% if scan.status == 'running' %}running{% endif %}" style="width: {{ progress.percent }}%;"></div>
+  </div>
+  <div class="d-flex justify-content-between small text-muted">
+    <span><span id="scan-progress-text">{{ progress.scanned }} / {{ progress.total }}</span> {{ t('discovery.scanned')|lower }}</span>
+    <span>{{ t('discovery.found') }}: <strong id="scan-found-count">{{ progress.found }}</strong></span>
+  </div>
+  <div id="scan-status-banner" class="scan-status-banner {{ scan.status }}">
+    <i class="bi bi-activity"></i>
+    <div id="scan-status-message">{{ progress.stage_message or t('discovery.scan_running') }}</div>
+  </div>
+</div>
+
+<div id="scan-end-state" class="alert d-none mb-3"></div>
+
+<div class="scan-activity-panel">
+  <div class="scan-panel-header">
+    <div>
+      <strong><i class="bi bi-clock-history"></i> {{ t('discovery.live_activity') }}</strong>
+      <span class="small text-muted">(<span id="scan-event-count">{{ initial_events|length }}</span> {{ t('discovery.events') }})</span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <div class="scan-filter-bar">
+        <button type="button" class="scan-filter-btn active" data-filter="all">{{ t('discovery.filter.all') }}</button>
+        <button type="button" class="scan-filter-btn" data-filter="info">{{ t('discovery.filter.info') }}</button>
+        <button type="button" class="scan-filter-btn" data-filter="success">{{ t('discovery.filter.success') }}</button>
+        <button type="button" class="scan-filter-btn" data-filter="warning">{{ t('discovery.filter.warning') }}</button>
+        <button type="button" class="scan-filter-btn" data-filter="error">{{ t('discovery.filter.error') }}</button>
+        <button type="button" class="scan-filter-btn" data-filter="found">{{ t('discovery.filter.found') }}</button>
+      </div>
+      <label class="small mb-0"><input type="checkbox" id="scan-auto-scroll" checked> {{ t('discovery.auto_scroll') }}</label>
+    </div>
+  </div>
+  <div id="scan-activity-log" class="scan-activity-log">
+    {% if not initial_events %}
+    <div class="scan-empty-state">
+      <div class="scan-empty-icon"><i class="bi bi-reception-4"></i></div>
+      <div>{{ t('discovery.waiting_for_events') }}</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="scan-devices-panel">
+  <div class="scan-panel-header">
+    <strong><i class="bi bi-hdd-network"></i> {{ t('discovery.discovered_devices') }} (<span id="scan-device-count">{{ devices|length }}</span>)</strong>
+  </div>
+  <div id="scan-devices-container" class="p-0">
+    {% if devices %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>IP</th>
+            <th>{{ t('discovery.hostname') }}</th>
+            <th>{{ t('discovery.type') }}</th>
+            <th>{{ t('discovery.confidence') }}</th>
+            <th>{{ t('discovery.vendor') }}</th>
+            <th>{{ t('discovery.ports') }}</th>
+            <th>{{ t('discovery.detection_source') }}</th>
+            <th>{{ t('discovery.evidence') }}</th>
+          </tr>
+        </thead>
+        <tbody id="scan-devices-tbody">
+          {% for d in devices %}
+          <tr data-device-id="{{ d.id }}">
+            <td><code>{{ d.ip_address }}</code></td>
+            <td>{{ d.hostname or '—' }}</td>
+            <td><span class="device-badge device-type-{{ d.detected_type }}">{{ d.detected_type|replace('_',' ') }}</span></td>
+            <td><span class="{% if d.confidence >= 75 %}confidence-high{% elif d.confidence >= 50 %}confidence-medium{% else %}confidence-low{% endif %}">{{ d.confidence }}%</span></td>
+            <td>{{ d.vendor or '—' }}</td>
+            <td><code>{{ d.open_ports or '—' }}</code></td>
+            <td class="small text-muted">{{ d.discovery_source or '—' }}</td>
+            <td class="small text-muted">{{ d.evidence_text or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% elif scan.status == 'running' %}
+    <div class="scan-empty-state">
+      <div class="scan-empty-icon"><i class="bi bi-radar"></i></div>
+      <div class="fw-semibold">{{ t('discovery.devices_appear_during_scan') }}</div>
+    </div>
+    {% else %}
+    <div class="scan-empty-state">
+      <div class="scan-empty-icon"><i class="bi bi-inboxes"></i></div>
+      <div class="fw-semibold">{{ t('discovery.no_reachable_devices') }}</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="alert alert-info border-0 shadow-sm">
+  <div class="d-flex gap-2">
+    <i class="bi bi-info-circle-fill"></i>
+    <div>
+      <strong>{{ t('discovery.ip_matching_note') }}</strong>
+      <div class="small mb-0">{{ t('discovery.ip_accuracy_disclaimer') }}</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/discovery-scan.js"></script>
+{% endblock %}

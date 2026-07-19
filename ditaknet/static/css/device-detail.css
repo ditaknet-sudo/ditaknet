@@ -1,0 +1,165 @@
+.device-detail-page .device-detail-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.device-detail-status-pill[data-state="ok"],
+.device-big-status[data-state="ok"],
+.device-status-card[data-state="ok"] .device-big-status {
+  color: #0f6b4d;
+}
+
+.device-detail-status-pill[data-state="ok"] {
+  background: rgba(23, 166, 115, 0.15);
+  color: #0f6b4d;
+}
+
+.device-detail-status-pill[data-state="warning"] {
+  background: rgba(242, 181, 68, 0.18);
+  color: #8a5d00;
+}
+
+.device-detail-status-pill[data-state="critical"] {
+  background: rgba(194, 65, 12, 0.15);
+  color: #9a3412;
+}
+
+.device-detail-status-pill[data-state="unknown"],
+.device-detail-status-pill[data-state="disabled"] {
+  background: rgba(102, 112, 133, 0.15);
+  color: #475467;
+}
+
+.device-status-card {
+  border-left: 4px solid var(--line);
+}
+
+.device-status-card[data-state="ok"] {
+  border-left-color: #17a673;
+}
+
+.device-status-card[data-state="warning"] {
+  border-left-color: #f2b544;
+}
+
+.device-status-card[data-state="critical"] {
+  border-left-color: #c2410c;
+}
+
+.device-big-status {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.device-big-substatus {
+  font-size: 1.1rem;
+  margin-top: 0.35rem;
+}
+
+.device-meta-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.device-meta-list dt {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.device-meta-list dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.device-stat-card .stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.device-stat-card .stat-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-top: 0.25rem;
+}
+
+.uptime-heartbeat {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-height: 42px;
+  padding: 0.35rem 0;
+  overflow-x: auto;
+}
+
+.uptime-bar {
+  flex: 1 1 4px;
+  min-width: 4px;
+  border-radius: 2px;
+  background: #d0d5dd;
+  cursor: default;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.uptime-bar.ok {
+  background: #17a673;
+}
+
+.uptime-bar.warning {
+  background: #f2b544;
+}
+
+.uptime-bar.critical {
+  background: #c2410c;
+}
+
+.uptime-bar.unknown {
+  background: #d0d5dd;
+}
+
+.uptime-bar:hover {
+  transform: scaleY(1.08);
+  opacity: 0.92;
+}
+
+.uptime-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 0.35rem;
+  vertical-align: -1px;
+}
+
+.legend-dot.ok { background: #17a673; }
+.legend-dot.warning { background: #f2b544; }
+.legend-dot.critical { background: #c2410c; }
+.legend-dot.unknown { background: #d0d5dd; }
+
+#recent-events-list .list-group-item {
+  font-size: 0.9rem;
+}
+
+.event-type {
+  font-weight: 600;
+  text-transform: capitalize;
+}

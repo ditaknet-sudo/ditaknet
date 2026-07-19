@@ -1,0 +1,10 @@
+images:
+  image:
+    repository: ghcr.io/ditaknet-sudo/ditaknet
+    tag: "2.0.1"
+
+consts:
+  ditaknet_container_name: ditaknet
+  notes: |
+    Pin image tag to a SemVer release for production.
+    Enable host networking when LAN discovery accuracy matters.

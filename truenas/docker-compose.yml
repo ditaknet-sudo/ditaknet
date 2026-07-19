@@ -1,0 +1,50 @@
+# ==========================================================================
+# DitakNet — TrueNAS SCALE Custom App (bridge networking)
+# --------------------------------------------------------------------------
+# Install via: Apps → Discover → Custom App / Install via YAML
+# Uses a published GHCR image (no local build).
+#
+# 1) Copy truenas/.env.example → .env next to this file (or set vars in UI)
+# 2) Adjust DITAKNET_*_PATH to your pool datasets
+# 3) Pin DITAKNET_VERSION to an exact release (e.g. 2.0.1).
+#
+# For better LAN discovery / ARP visibility, prefer:
+#   docker-compose.host-network.yml
+# ==========================================================================
+
+services:
+  ditaknet:
+    image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-2.0.1}
+    container_name: ditaknet
+    restart: unless-stopped
+    ports:
+      - "5833:5833"
+    volumes:
+      - ${DITAKNET_DATA_PATH}:/app/data
+      - ${DITAKNET_LOGS_PATH}:/app/logs
+      - ${DITAKNET_BACKUPS_PATH}:/app/backups
+      - ${DITAKNET_PLUGINS_PATH}:/app/plugins
+    cap_add:
+      - NET_RAW
+    environment:
+      APP_ENV: production
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "5833"
+      DATA_DIR: /app/data
+      LOG_DIR: /app/logs
+      BACKUP_DIR: /app/backups
+      PLUGIN_DIR: /app/plugins
+      # Optional LAN DNS for hostname discovery (set to your router if needed)
+      # DISCOVERY_DNS_SERVERS: "192.168.1.1"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5833/health', timeout=3).read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3

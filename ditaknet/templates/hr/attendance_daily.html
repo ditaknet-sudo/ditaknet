@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ t('attendance') }}{% endblock %}
+{% block header %}{{ t('daily_report') }}{% endblock %}
+{% block page_subtitle %}<p class="text-muted mb-0 small">{{ t('privacy_notice') }}</p>{% endblock %}
+{% block actions %}
+{% if can_edit_attendance %}
+<form method="post" action="/attendance/refresh" class="d-inline">
+  <input type="hidden" name="day" value="{{ selected_day }}">
+  <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+</form>
+{% endif %}
+{% if can_export %}
+<a class="btn btn-outline-secondary btn-sm" href="/api/hr/reports/daily/export.csv?day={{ selected_day }}">CSV</a>
+{% endif %}
+<a class="btn btn-outline-secondary btn-sm" href="/attendance/reports/monthly">Monthly</a>
+<a class="btn btn-outline-secondary btn-sm" href="/attendance/settings">Settings</a>
+{% endblock %}
+{% block content %}
+<form class="row g-2 mb-3" method="get" action="/attendance">
+  <div class="col-md-2"><input class="form-control" type="date" name="day" value="{{ selected_day }}"></div>
+  <div class="col-md-2">
+    <select class="form-select" name="department_id">
+      <option value="">All departments</option>
+      {% for d in departments %}<option value="{{ d.id }}" {% if filters.department_id == d.id|string %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select class="form-select" name="group_id">
+      <option value="">All groups</option>
+      {% for g in groups %}<option value="{{ g.id }}" {% if filters.group_id == g.id|string %}selected{% endif %}>{{ g.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select class="form-select" name="shift_id">
+      <option value="">All shifts</option>
+      {% for s in shifts %}<option value="{{ s.id }}" {% if filters.shift_id == s.id|string %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2"><input class="form-control" name="search" placeholder="Employee" value="{{ filters.search }}"></div>
+  <div class="col-md-2"><button class="btn btn-outline-primary w-100" type="submit">Filter</button></div>
+</form>
+<div class="table-responsive">
+<table class="table table-sm table-hover align-middle">
+  <thead><tr>
+    <th>Employee</th><th>Department</th><th>Group</th><th>Shift</th><th>Status</th>
+    <th>{{ t('first_seen') }}</th><th>{{ t('last_seen') }}</th><th>{{ t('worked_hours') }}</th>
+    <th>{{ t('late_minutes') }}</th><th>{{ t('early_leave_minutes') }}</th><th>{{ t('confidence') }}</th>
+  </tr></thead>
+  <tbody>
+  {% for row in rows %}
+    <tr>
+      <td>{{ row.full_name }}</td>
+      <td>{{ row.department_name or '—' }}</td>
+      <td>{{ row.group_name or '—' }}</td>
+      <td>{{ row.shift_name or '—' }}</td>
+      <td><span class="badge bg-secondary">{{ row.status }}</span></td>
+      <td class="small">{{ row.first_seen_at or '—' }}</td>
+      <td class="small">{{ row.last_seen_at or '—' }}</td>
+      <td>{{ (row.worked_minutes // 60) }}h {{ row.worked_minutes % 60 }}m</td>
+      <td>{{ row.late_minutes }}</td>
+      <td>{{ row.early_leave_minutes }}</td>
+      <td>{{ row.confidence }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="11" class="text-center text-muted py-4">No attendance records for this day.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

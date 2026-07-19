@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}New group{% endblock %}
+{% block header %}New group{% endblock %}
+{% block content %}
+<form method="post" action="/employee-groups/create" class="vstack gap-3" style="max-width:480px">
+  <div><label class="form-label">Name</label><input class="form-control" name="name" required></div>
+  <div><label class="form-label">Description</label><input class="form-control" name="description"></div>
+  <div><label class="form-label">Department</label>
+    <select class="form-select" name="department_id"><option value="">—</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select>
+  </div>
+  <div><label class="form-label">Default shift</label>
+    <select class="form-select" name="default_shift_id"><option value="">—</option>{% for s in shifts %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select>
+  </div>
+  <button class="btn btn-primary" type="submit">Create</button>
+</form>
+{% endblock %}

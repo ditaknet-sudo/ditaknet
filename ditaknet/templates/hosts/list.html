@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Hosts{% endblock %}
+{% block header %}Hosts{% endblock %}
+
+{% block actions %}
+<a href="/hosts/new" class="btn btn-primary">
+    <i class="bi bi-plus-lg me-1"></i> Add Host
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-borderless align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">Host</th>
+                        <th>Address</th>
+                        <th>Type</th>
+                        <th>Location</th>
+                        <th>Status</th>
+                        <th>Last Check</th>
+                        <th>Enabled</th>
+                        <th class="pe-4 text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in status_list %}
+                    <tr>
+                        <td class="ps-4"><a href="/hosts/{{ item.host.id }}" class="text-decoration-none fw-bold">{{ item.host.name }}</a></td>
+                        <td><span class="font-monospace text-muted">{{ item.host.address }}</span></td>
+                        <td>{{ item.host.get('host_type', 'server') }}</td>
+                        <td>{{ item.host.get('location', '') or '—' }}</td>
+                        <td>{{ status_badge(item.overall_state) }}</td>
+                        <td class="text-muted small">{{ item.last_check_at|datetime }}</td>
+                        <td>
+                            {% if item.host.enabled %}
+                            <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25">Yes</span>
+                            {% else %}
+                            <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25">No</span>
+                            {% endif %}
+                        </td>
+                        <td class="pe-4 text-end">
+                            <div class="btn-group">
+                                <a href="/hosts/{{ item.host.id }}" class="btn btn-sm btn-outline-secondary" title="View Details">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <a href="/hosts/{{ item.host.id }}/edit" class="btn btn-sm btn-outline-secondary" title="Edit Host">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <a href="/services/new?host_id={{ item.host.id }}" class="btn btn-sm btn-outline-success" title="Add Service">
+                                    <i class="bi bi-plus-lg"></i>
+                                </a>
+                                <form action="/hosts/{{ item.host.id }}/delete" method="POST" class="d-inline" onsubmit="return confirm('Delete this host and all its services?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Host">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-5">
+                            <i class="bi bi-hdd-network fs-1 d-block mb-3 opacity-50"></i>
+                            No hosts found. Click "Add Host" to get started.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
