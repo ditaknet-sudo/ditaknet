@@ -1,6 +1,6 @@
 # Dependabot tracks the human-readable tag while the digest pins the exact
 # multi-architecture base index used by linux/amd64 and linux/arm64 builds.
-FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
+FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6
 
 ARG APP_VERSION=2.0.1
 ARG IMAGE_TAG=2.0.1
