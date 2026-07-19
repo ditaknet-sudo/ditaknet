@@ -1,37 +1,86 @@
+# New installs default to Docker named volumes. Before replacing an older
+# DitakNet Compose file that used ./data, ./logs, ./backups and ./plugins, set
+# all four DITAKNET_*_SOURCE values to those existing paths and follow
+# docs/UPGRADE.md. Starting first with unset values attaches empty volumes.
 services:
+  storage-init:
+    image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-2.0.1}
+    pull_policy: missing
+    restart: "no"
+    network_mode: none
+    user: "0:0"
+    read_only: true
+    pids_limit: 32
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    command:
+      - chown
+      - --recursive
+      - --no-dereference
+      - "568:568"
+      - /app/data
+      - /app/logs
+      - /app/backups
+      - /app/plugins
+    # Deliberately use only the four declared defaults. Operator-supplied
+    # *_SOURCE bind paths are never attached to this privileged init service.
+    volumes:
+      - ditaknet-data:/app/data
+      - ditaknet-logs:/app/logs
+      - ditaknet-backups:/app/backups
+      - ditaknet-plugins:/app/plugins
+
   ditaknet:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-2.0.1}
-        IMAGE_TAG: ${IMAGE_TAG:-2.0.1}
-        BUILD_COMMIT: ${BUILD_COMMIT:-}
-        BUILD_DATE: ${BUILD_DATE:-}
-    image: ditaknet:${IMAGE_TAG:-2.0.1}
+    image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-2.0.1}
+    # Exact release tags are immutable. Reuse the cached image for offline
+    # restarts; change DITAKNET_VERSION and run `docker compose pull` to update.
+    pull_policy: missing
     container_name: ditaknet-monitoring
     restart: unless-stopped
+    init: true
+    user: "568:568"
+    read_only: true
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
     env_file:
       - ./config/runtime.env
+    environment:
+      # Keep runtime metadata aligned when an operator upgrades only the image
+      # through DITAKNET_VERSION; these override the version in runtime.env.
+      APP_VERSION: ${DITAKNET_VERSION:-2.0.1}
+      IMAGE_TAG: ${DITAKNET_VERSION:-2.0.1}
     ports:
-      - "5833:5833"
-    dns:
-      - ${DISCOVERY_DNS:-8.8.8.8}
-      - 8.8.8.8
+      - "${DITAKNET_BIND_ADDRESS:-0.0.0.0}:${DITAKNET_PORT:-5833}:5833"
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-      - ./backups:/app/backups
-      - ./plugins:/app/plugins
+      # Named volumes are the safe fresh-install default; storage-init grants
+      # their roots to 568:568 before the application starts. Each *_SOURCE may
+      # instead be an explicitly provisioned host path whose ACL grants that
+      # identity write access; storage-init never mounts operator bind paths.
+      - ${DITAKNET_DATA_SOURCE:-ditaknet-data}:/app/data
+      - ${DITAKNET_LOGS_SOURCE:-ditaknet-logs}:/app/logs
+      - ${DITAKNET_BACKUPS_SOURCE:-ditaknet-backups}:/app/backups
+      - ${DITAKNET_PLUGINS_SOURCE:-ditaknet-plugins}:/app/plugins
     cap_add:
       - NET_RAW
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,uid=568,gid=568,mode=1770
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5833/health', timeout=3).read()",
+          "import json,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:5833/health',timeout=3)); assert data.get('status') == 'healthy', data",
         ]
       interval: 30s
       timeout: 5s
@@ -41,3 +90,9 @@ services:
     # For Linux/TrueNAS SCALE, host networking gives the most accurate LAN
     # discovery and ARP/MAC visibility. Enable it there only, and remove ports:
     # network_mode: host
+
+volumes:
+  ditaknet-data:
+  ditaknet-logs:
+  ditaknet-backups:
+  ditaknet-plugins:

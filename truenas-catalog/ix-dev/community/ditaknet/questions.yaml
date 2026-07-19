@@ -1,12 +1,14 @@
 groups:
   - name: DitakNet Configuration
-    description: DitakNet application settings
+    description: Configure DitakNet application settings
+  - name: User and Group Configuration
+    description: Configure the non-root identity used by DitakNet
   - name: Network Configuration
-    description: Configure networking for DitakNet
+    description: Configure bridge or host networking for DitakNet
   - name: Storage Configuration
-    description: Persistent storage for DitakNet
+    description: Configure persistent storage for DitakNet
   - name: Resources Configuration
-    description: CPU and memory limits
+    description: Configure CPU and memory limits
 
 questions:
   - variable: TZ
@@ -25,35 +27,41 @@ questions:
     schema:
       type: dict
       attrs:
-        - variable: image_tag
-          label: Image Tag
-          description: |
-            Exact SemVer tag published to GHCR (example 2.0.1).
-            Floating tags are unsupported.
+        - variable: app_base_url
+          label: Public Base URL
+          description: Optional external HTTPS URL used to access DitakNet.
           schema:
             type: string
-            default: "2.0.1"
-            required: true
-        - variable: additional_envs
-          label: Additional Environment Variables
+            default: ""
+        - variable: discovery_dns_servers
+          label: LAN DNS Servers
+          description: Optional comma-separated LAN DNS server addresses used for hostname discovery.
           schema:
-            type: list
-            default: []
-            items:
-              - variable: env
-                label: Environment Variable
-                schema:
-                  type: dict
-                  attrs:
-                    - variable: name
-                      label: Name
-                      schema:
-                        type: string
-                        required: true
-                    - variable: value
-                      label: Value
-                      schema:
-                        type: string
+            type: string
+            default: ""
+
+  - variable: run_as
+    label: ""
+    group: User and Group Configuration
+    schema:
+      type: dict
+      attrs:
+        - variable: user
+          label: User ID
+          description: Non-root UID that owns and writes DitakNet persistent data.
+          schema:
+            type: int
+            min: 568
+            default: 568
+            required: true
+        - variable: group
+          label: Group ID
+          description: Non-root GID that owns and writes DitakNet persistent data.
+          schema:
+            type: int
+            min: 568
+            default: 568
+            required: true
 
   - variable: network
     label: ""
@@ -64,9 +72,9 @@ questions:
         - variable: host_network
           label: Host Network
           description: |
-            Recommended for accurate LAN discovery / ARP.
-            When enabled, port publish settings are ignored and
-            DitakNet binds to host port 5833.
+            Enable only when direct LAN discovery, ARP, or ICMP visibility is
+            required. DitakNet then shares the TrueNAS network namespace and
+            binds directly to host port 5833. Port publishing is disabled.
           schema:
             type: boolean
             default: false
@@ -79,14 +87,14 @@ questions:
                 label: Port Bind Mode
                 schema:
                   type: string
-                  default: "published"
+                  default: published
                   enum:
-                    - value: "published"
-                      description: Publish port on the host
-                    - value: "exposed"
-                      description: Expose for inter-container only
+                    - value: published
+                      description: Publish the port on selected host addresses
+                    - value: exposed
+                      description: Expose the port only to other containers
                     - value: ""
-                      description: None
+                      description: Do not publish or expose the port
               - variable: port_number
                 label: Port Number
                 schema:
@@ -95,6 +103,21 @@ questions:
                   min: 1
                   max: 65535
                   required: true
+              - variable: host_ips
+                label: Host IPs
+                description: Host addresses on which to publish the bridge-mode WebUI.
+                schema:
+                  type: list
+                  show_if: [["bind_mode", "=", "published"]]
+                  default: []
+                  items:
+                    - variable: host_ip
+                      label: Host IP
+                      schema:
+                        type: string
+                        required: true
+                        $ref:
+                          - definitions/node_bind_ip
 
   - variable: storage
     label: ""
@@ -104,20 +127,22 @@ questions:
       attrs:
         - variable: data
           label: DitakNet Data
-          description: Database and runtime state (/app/data)
+          description: Database, generated session key, and runtime state (/app/data).
           schema:
             type: dict
             attrs:
               - variable: type
                 label: Type
+                description: Use Host Path datasets for production and ixVolume only for evaluation.
                 schema:
                   type: string
+                  required: true
                   default: ix_volume
                   enum:
-                    - value: ix_volume
-                      description: ixVolume
                     - value: host_path
-                      description: Host Path
+                      description: Host Path (recommended for production)
+                    - value: ix_volume
+                      description: ixVolume (convenient for evaluation)
               - variable: ix_volume_config
                 label: ixVolume Configuration
                 schema:
@@ -126,26 +151,64 @@ questions:
                   $ref:
                     - normalize/ix_volume
                   attrs:
+                    - variable: acl_enable
+                      label: Enable ACL
+                      schema:
+                        type: boolean
+                        default: false
                     - variable: dataset_name
                       label: Dataset Name
                       schema:
                         type: string
-                        default: ditaknet_data
+                        default: data
                         required: true
+                        hidden: true
+                    - variable: acl_entries
+                      label: ACL Configuration
+                      schema:
+                        type: dict
+                        show_if: [["acl_enable", "=", true]]
+                        attrs: []
               - variable: host_path_config
                 label: Host Path Configuration
                 schema:
                   type: dict
                   show_if: [["type", "=", "host_path"]]
                   attrs:
+                    - variable: acl_enable
+                      label: Enable ACL
+                      description: Add an ACL entry granting the run-as UID/GID full control.
+                      schema:
+                        type: boolean
+                        default: false
+                    - variable: acl
+                      label: ACL Configuration
+                      schema:
+                        type: dict
+                        show_if: [["acl_enable", "=", true]]
+                        attrs: []
+                        $ref:
+                          - normalize/acl
                     - variable: path
                       label: Host Path
                       schema:
                         type: hostpath
+                        show_if: [["acl_enable", "=", false]]
                         required: true
+                    - variable: auto_permissions
+                      label: Automatic Permissions
+                      description: |
+                        For a new or empty dataset, let the TrueNAS permissions
+                        helper set top-level ownership to the configured run-as
+                        UID/GID. Snapshot existing data before enabling this.
+                      schema:
+                        type: boolean
+                        default: false
+                        show_if: [["acl_enable", "=", false]]
+
         - variable: logs
           label: DitakNet Logs
-          description: Application logs (/app/logs)
+          description: Rotating application logs (/app/logs).
           schema:
             type: dict
             attrs:
@@ -153,12 +216,13 @@ questions:
                 label: Type
                 schema:
                   type: string
+                  required: true
                   default: ix_volume
                   enum:
-                    - value: ix_volume
-                      description: ixVolume
                     - value: host_path
-                      description: Host Path
+                      description: Host Path (recommended for production)
+                    - value: ix_volume
+                      description: ixVolume (convenient for evaluation)
               - variable: ix_volume_config
                 label: ixVolume Configuration
                 schema:
@@ -167,26 +231,60 @@ questions:
                   $ref:
                     - normalize/ix_volume
                   attrs:
+                    - variable: acl_enable
+                      label: Enable ACL
+                      schema:
+                        type: boolean
+                        default: false
                     - variable: dataset_name
                       label: Dataset Name
                       schema:
                         type: string
-                        default: ditaknet_logs
+                        default: logs
                         required: true
+                        hidden: true
+                    - variable: acl_entries
+                      label: ACL Configuration
+                      schema:
+                        type: dict
+                        show_if: [["acl_enable", "=", true]]
+                        attrs: []
               - variable: host_path_config
                 label: Host Path Configuration
                 schema:
                   type: dict
                   show_if: [["type", "=", "host_path"]]
                   attrs:
+                    - variable: acl_enable
+                      label: Enable ACL
+                      schema:
+                        type: boolean
+                        default: false
+                    - variable: acl
+                      label: ACL Configuration
+                      schema:
+                        type: dict
+                        show_if: [["acl_enable", "=", true]]
+                        attrs: []
+                        $ref:
+                          - normalize/acl
                     - variable: path
                       label: Host Path
                       schema:
                         type: hostpath
+                        show_if: [["acl_enable", "=", false]]
                         required: true
+                    - variable: auto_permissions
+                      label: Automatic Permissions
+                      description: Snapshot existing data before allowing ownership changes.
+                      schema:
+                        type: boolean
+                        default: false
+                        show_if: [["acl_enable", "=", false]]
+
         - variable: backups
           label: DitakNet Backups
-          description: Backup archives (/app/backups)
+          description: Backup archives created by DitakNet (/app/backups).
           schema:
             type: dict
             attrs:
@@ -194,12 +292,13 @@ questions:
                 label: Type
                 schema:
                   type: string
+                  required: true
                   default: ix_volume
                   enum:
-                    - value: ix_volume
-                      description: ixVolume
                     - value: host_path
-                      description: Host Path
+                      description: Host Path (recommended for production)
+                    - value: ix_volume
+                      description: ixVolume (convenient for evaluation)
               - variable: ix_volume_config
                 label: ixVolume Configuration
                 schema:
@@ -208,26 +307,60 @@ questions:
                   $ref:
                     - normalize/ix_volume
                   attrs:
+                    - variable: acl_enable
+                      label: Enable ACL
+                      schema:
+                        type: boolean
+                        default: false
                     - variable: dataset_name
                       label: Dataset Name
                       schema:
                         type: string
-                        default: ditaknet_backups
+                        default: backups
                         required: true
+                        hidden: true
+                    - variable: acl_entries
+                      label: ACL Configuration
+                      schema:
+                        type: dict
+                        show_if: [["acl_enable", "=", true]]
+                        attrs: []
               - variable: host_path_config
                 label: Host Path Configuration
                 schema:
                   type: dict
                   show_if: [["type", "=", "host_path"]]
                   attrs:
+                    - variable: acl_enable
+                      label: Enable ACL
+                      schema:
+                        type: boolean
+                        default: false
+                    - variable: acl
+                      label: ACL Configuration
+                      schema:
+                        type: dict
+                        show_if: [["acl_enable", "=", true]]
+                        attrs: []
+                        $ref:
+                          - normalize/acl
                     - variable: path
                       label: Host Path
                       schema:
                         type: hostpath
+                        show_if: [["acl_enable", "=", false]]
                         required: true
+                    - variable: auto_permissions
+                      label: Automatic Permissions
+                      description: Snapshot existing data before allowing ownership changes.
+                      schema:
+                        type: boolean
+                        default: false
+                        show_if: [["acl_enable", "=", false]]
+
         - variable: plugins
           label: DitakNet Plugins
-          description: Optional plugins (/app/plugins)
+          description: Optional user-installed plugins (/app/plugins).
           schema:
             type: dict
             attrs:
@@ -235,12 +368,13 @@ questions:
                 label: Type
                 schema:
                   type: string
+                  required: true
                   default: ix_volume
                   enum:
-                    - value: ix_volume
-                      description: ixVolume
                     - value: host_path
-                      description: Host Path
+                      description: Host Path (recommended for production)
+                    - value: ix_volume
+                      description: ixVolume (convenient for evaluation)
               - variable: ix_volume_config
                 label: ixVolume Configuration
                 schema:
@@ -249,23 +383,56 @@ questions:
                   $ref:
                     - normalize/ix_volume
                   attrs:
+                    - variable: acl_enable
+                      label: Enable ACL
+                      schema:
+                        type: boolean
+                        default: false
                     - variable: dataset_name
                       label: Dataset Name
                       schema:
                         type: string
-                        default: ditaknet_plugins
+                        default: plugins
                         required: true
+                        hidden: true
+                    - variable: acl_entries
+                      label: ACL Configuration
+                      schema:
+                        type: dict
+                        show_if: [["acl_enable", "=", true]]
+                        attrs: []
               - variable: host_path_config
                 label: Host Path Configuration
                 schema:
                   type: dict
                   show_if: [["type", "=", "host_path"]]
                   attrs:
+                    - variable: acl_enable
+                      label: Enable ACL
+                      schema:
+                        type: boolean
+                        default: false
+                    - variable: acl
+                      label: ACL Configuration
+                      schema:
+                        type: dict
+                        show_if: [["acl_enable", "=", true]]
+                        attrs: []
+                        $ref:
+                          - normalize/acl
                     - variable: path
                       label: Host Path
                       schema:
                         type: hostpath
+                        show_if: [["acl_enable", "=", false]]
                         required: true
+                    - variable: auto_permissions
+                      label: Automatic Permissions
+                      description: Snapshot existing data before allowing ownership changes.
+                      schema:
+                        type: boolean
+                        default: false
+                        show_if: [["acl_enable", "=", false]]
 
   - variable: resources
     label: ""
@@ -282,11 +449,13 @@ questions:
                 label: CPUs
                 schema:
                   type: int
+                  min: 1
                   default: 2
                   required: true
               - variable: memory
                 label: Memory (in MB)
                 schema:
                   type: int
+                  min: 512
                   default: 2048
                   required: true

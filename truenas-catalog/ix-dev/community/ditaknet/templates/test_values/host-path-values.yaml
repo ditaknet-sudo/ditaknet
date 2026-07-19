@@ -1,0 +1,55 @@
+# Production-style bridge networking with pre-created host-path datasets.
+TZ: Etc/UTC
+
+ditaknet:
+  app_base_url: https://ditaknet.example.test
+  discovery_dns_servers: "192.168.1.1,192.168.1.2"
+
+run_as:
+  user: 568
+  group: 568
+
+network:
+  host_network: false
+  web_port:
+    bind_mode: published
+    port_number: 15833
+    host_ips:
+      - 127.0.0.1
+
+storage:
+  data:
+    type: host_path
+    host_path_config:
+      path: /opt/tests/mnt/ditaknet-host-path/data
+      create_host_path: true
+      acl_enable: false
+      auto_permissions: true
+  logs:
+    type: host_path
+    host_path_config:
+      path: /opt/tests/mnt/ditaknet-host-path/logs
+      create_host_path: true
+      acl_enable: false
+      auto_permissions: true
+  backups:
+    type: host_path
+    host_path_config:
+      path: /opt/tests/mnt/ditaknet-host-path/backups
+      create_host_path: true
+      acl_enable: false
+      auto_permissions: true
+  plugins:
+    type: host_path
+    host_path_config:
+      path: /opt/tests/mnt/ditaknet-host-path/plugins
+      create_host_path: true
+      acl_enable: false
+      auto_permissions: true
+
+resources:
+  limits:
+    cpus: 2
+    memory: 2048
+
+ci: true

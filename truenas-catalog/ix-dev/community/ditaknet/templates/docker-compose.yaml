@@ -1,12 +1,13 @@
 {% set tpl = ix_lib.base.render.Render(values) %}
 
-{# Image tag override from questions (production should pin SemVer). #}
-{% if values.ditaknet.image_tag %}
-{% do values.images.image.update({"tag": values.ditaknet.image_tag}) %}
-{% endif %}
-
 {% set c1 = tpl.add_container(values.consts.ditaknet_container_name, "image") %}
+{% set perm_container = tpl.deps.perms(values.consts.perms_container_name) %}
+{% set perms_config = {"uid": values.run_as.user, "gid": values.run_as.group, "mode": "check"} %}
 
+{% do c1.set_user(values.run_as.user, values.run_as.group) %}
+{% do c1.set_init(True) %}
+{% do c1.set_read_only(True) %}
+{% do c1.set_grace_period(30) %}
 {% do c1.add_caps(["NET_RAW"]) %}
 {% do c1.healthcheck.set_custom_test([
   "CMD",
@@ -18,23 +19,60 @@
 {% do c1.environment.add_env("APP_ENV", "production") %}
 {% do c1.environment.add_env("APP_HOST", "0.0.0.0") %}
 {% do c1.environment.add_env("APP_PORT", "5833") %}
+{% do c1.environment.add_env("HOME", "/tmp") %}
+{% do c1.environment.add_env("TMPDIR", "/tmp") %}
 {% do c1.environment.add_env("DATA_DIR", "/app/data") %}
 {% do c1.environment.add_env("LOG_DIR", "/app/logs") %}
 {% do c1.environment.add_env("BACKUP_DIR", "/app/backups") %}
 {% do c1.environment.add_env("PLUGIN_DIR", "/app/plugins") %}
-{% do c1.environment.add_env("TZ", values.TZ) %}
-{% do c1.environment.add_user_envs(values.ditaknet.additional_envs) %}
+{% if values.ditaknet.app_base_url %}
+  {% do c1.environment.add_env("APP_BASE_URL", values.ditaknet.app_base_url.rstrip("/")) %}
+{% endif %}
+{% if values.ditaknet.discovery_dns_servers %}
+  {% do c1.environment.add_env("DISCOVERY_DNS_SERVERS", values.ditaknet.discovery_dns_servers) %}
+{% endif %}
 
 {% if values.network.host_network %}
-{% do c1.set_network_mode("host") %}
+  {% do c1.set_network_mode("host") %}
 {% else %}
-{% do c1.add_port(values.network.web_port) %}
-{% do tpl.portals.add(values.network.web_port) %}
+  {# The host port is configurable, but DitakNet always listens on 5833 in-container. #}
+  {% do c1.add_port(values.network.web_port, {"container_port": 5833}) %}
+  {% do tpl.portals.add(values.network.web_port) %}
 {% endif %}
 
 {% do c1.add_storage("/app/data", values.storage.data) %}
 {% do c1.add_storage("/app/logs", values.storage.logs) %}
 {% do c1.add_storage("/app/backups", values.storage.backups) %}
 {% do c1.add_storage("/app/plugins", values.storage.plugins) %}
+{% do c1.add_storage("/tmp", {
+  "type": "tmpfs",
+  "tmpfs_config": {
+    "size": 64,
+    "mode": "0770",
+    "uid": values.run_as.user,
+    "gid": values.run_as.group
+  }
+}) %}
+
+{% do perm_container.add_or_skip_action("data", values.storage.data, perms_config) %}
+{% do perm_container.add_or_skip_action("logs", values.storage.logs, perms_config) %}
+{% do perm_container.add_or_skip_action("backups", values.storage.backups, perms_config) %}
+{% do perm_container.add_or_skip_action("plugins", values.storage.plugins, perms_config) %}
+
+{% for name, store in values.storage.items() %}
+  {% if store.type == "host_path" and not store.host_path_config.get("acl_enable", false) and not store.host_path_config.get("auto_permissions", false) %}
+    {% do tpl.notes.add_warning("Host Path [%s] must already grant UID/GID %s:%s read/write/execute access." | format(name, values.run_as.user, values.run_as.group)) %}
+  {% endif %}
+{% endfor %}
+
+{% if perm_container.has_actions() %}
+  {% do perm_container.activate() %}
+  {% do c1.depends.add_dependency(values.consts.perms_container_name, "service_completed_successfully") %}
+{% endif %}
+
+{% do tpl.notes.add_info("Create a backup and a TrueNAS dataset snapshot before every upgrade.") %}
+{% if values.network.host_network %}
+  {% do tpl.notes.add_warning("Host networking shares the TrueNAS network namespace. Use it only when bridge-mode discovery is insufficient.") %}
+{% endif %}
 
 {{ tpl.render() | tojson }}

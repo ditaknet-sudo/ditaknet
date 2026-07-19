@@ -75,6 +75,17 @@ jobs:
             echo "Git tag must be exactly v$VERSION" >&2
             exit 1
           fi
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            # Manual dispatch is a retry mechanism for an existing release,
+            # never a way to publish an untagged default-branch snapshot.
+            git fetch --force --no-tags --depth=1 origin \
+              "refs/tags/v$VERSION:refs/tags/v$VERSION"
+            TAG_COMMIT="$(git rev-list -n 1 "v$VERSION")"
+            if [[ "$TAG_COMMIT" != "$GITHUB_SHA" ]]; then
+              echo "v$VERSION resolves to $TAG_COMMIT, not workflow SHA $GITHUB_SHA" >&2
+              exit 1
+            fi
+          fi
 
           python scripts/ci_validate_release.py --expected "$VERSION"
           BUILD_DATE="$(git show -s --format=%cI "$GITHUB_SHA")"
@@ -152,6 +163,7 @@ jobs:
         run: >-
           python -m compileall -q ditaknet app
           scripts/ci_validate_release.py scripts/lock_dependencies.py
+          scripts/validate_truenas.py scripts/render_truenas_catalog.py
 
       - name: Run test suite
         env:
@@ -193,11 +205,16 @@ jobs:
             exit 1
           fi
 
+      - name: Validate and render pinned TrueNAS packaging
+        run: |
+          python scripts/validate_truenas.py --check-upstream --compose-config
+          python scripts/render_truenas_catalog.py
+
   image-smoke:
-    name: Build and smoke-test container
+    name: Build, scan and smoke-test amd64/arm64
     needs: quality
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 55
     permissions:
       contents: read
 
@@ -207,17 +224,28 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up QEMU for arm64 runtime smoke testing
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          image: docker.io/tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          version: v0.34.1
 
-      - name: Build local image without publishing
+      - name: Build linux/amd64 image without publishing
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
           file: ./Dockerfile
+          platforms: linux/amd64
           push: false
           load: true
-          tags: ditaknet:ci-local
+          provenance: false
+          sbom: false
+          tags: ditaknet:ci-amd64
           build-args: |
             APP_VERSION=${{ needs.quality.outputs.version }}
             IMAGE_TAG=${{ needs.quality.outputs.version }}
@@ -229,81 +257,363 @@ jobs:
             org.opencontainers.image.version=${{ needs.quality.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ needs.quality.outputs.build_date }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=image-amd64
+          cache-to: type=gha,mode=max,scope=image-amd64
 
-      - name: Start container and verify health/web endpoints
+      - name: Build linux/arm64 image without publishing
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/arm64
+          push: false
+          load: true
+          provenance: false
+          sbom: false
+          tags: ditaknet:ci-arm64
+          build-args: |
+            APP_VERSION=${{ needs.quality.outputs.version }}
+            IMAGE_TAG=${{ needs.quality.outputs.version }}
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ needs.quality.outputs.build_date }}
+          labels: |
+            org.opencontainers.image.title=DitakNet
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.quality.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ needs.quality.outputs.build_date }}
+          cache-from: type=gha,scope=image-arm64
+          cache-to: type=gha,mode=max,scope=image-arm64
+
+      - name: Smoke-test the exact amd64 and arm64 artifacts
         shell: bash
         env:
           RELEASE_VERSION: ${{ needs.quality.outputs.version }}
         run: |
           set -euo pipefail
-          ROOT="${RUNNER_TEMP}/ditaknet-smoke"
-          mkdir -p "$ROOT"/{data,logs,backups,plugins}
-          docker run -d --name ditaknet-ci-smoke \
-            -p 127.0.0.1:5833:5833 \
-            --cap-add NET_RAW \
-            --security-opt no-new-privileges:true \
-            -e APP_ENV=production \
-            -e APP_VERSION="$RELEASE_VERSION" \
-            -e IMAGE_TAG="$RELEASE_VERSION" \
-            -v "$ROOT/data:/app/data" \
-            -v "$ROOT/logs:/app/logs" \
-            -v "$ROOT/backups:/app/backups" \
-            -v "$ROOT/plugins:/app/plugins" \
-            ditaknet:ci-local
+          RUN_SCOPE="ditaknet-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            docker rm -f ditaknet-ci-amd64 ditaknet-ci-arm64 \
+              >/dev/null 2>&1 || true
+            for arch in amd64 arm64; do
+              for path in data logs backups plugins; do
+                docker volume rm "${RUN_SCOPE}-${arch}-${path}" \
+                  >/dev/null 2>&1 || true
+              done
+            done
+          }
+          trap cleanup EXIT
 
-          HEALTHY=0
-          for _ in $(seq 1 40); do
-            if curl --fail --silent --show-error \
-              http://127.0.0.1:5833/health >"$ROOT/health.json"; then
-              HEALTHY=1
-              break
+          wait_healthy() {
+            local name="$1"
+            local healthy=0
+            for _ in $(seq 1 80); do
+              if [[ "$(docker inspect --format '{{.State.Health.Status}}' \
+                "$name" 2>/dev/null || true)" == "healthy" ]]; then
+                healthy=1
+                break
+              fi
+              sleep 3
+            done
+            if [[ "$healthy" != "1" ]]; then
+              docker inspect "$name"
+              docker logs "$name"
+              exit 1
             fi
-            sleep 2
-          done
-          if [[ "$HEALTHY" != "1" ]]; then
-            docker logs ditaknet-ci-smoke
-            exit 1
-          fi
+          }
 
-          grep -q '"status":"healthy"' "$ROOT/health.json"
-          STATUS="$(curl --silent --show-error --output "$ROOT/login.html" \
-            --write-out '%{http_code}' http://127.0.0.1:5833/login)"
-          [[ "$STATUS" =~ ^(200|302|303)$ ]]
+          assert_deep_health() {
+            local port="$1"
+            local output="$2"
+            curl --fail --silent --show-error --max-time 30 \
+              "http://127.0.0.1:${port}/health/deep" >"$output"
+            python - "$output" "$RELEASE_VERSION" <<'PY'
+          import json
+          import sys
 
-      - name: Remove smoke-test container
-        if: always()
-        run: docker rm -f ditaknet-ci-smoke >/dev/null 2>&1 || true
+          payload = json.load(open(sys.argv[1], encoding="utf-8"))
+          expected_version = sys.argv[2]
+          assert payload["status"] == "healthy", payload
+          assert payload["overall_status"] == "pass", payload
+          assert payload["version"] == expected_version, payload
+          assert payload["build"]["version"] == expected_version, payload
+          assert payload["build"]["image_tag"] == expected_version, payload
+          checks = payload["checks"]
+          assert checks["database"]["ok"] is True, checks
+          assert checks["database"]["status"] == "pass", checks
+          assert checks["schema"]["ok"] is True, checks
+          assert checks["schema"]["status"] == "pass", checks
+          assert checks["schema"]["missing_tables"] == [], checks
+          assert checks["directories"]["status"] == "pass", checks
+          for item in checks["directories"]["items"].values():
+              assert item["ok"] is True and item["writable"] is True, item
+          assert checks["scheduler"]["running"] is True, checks
+          PY
+          }
 
-      - name: Generate an SPDX SBOM from the smoke-tested image
+          capture_persistence_state() {
+            local name="$1"
+            local marker="$2"
+            local output="$3"
+            docker exec -i "$name" python - "$marker" >"$output" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sqlite3
+          import sys
+          from pathlib import Path
+
+          marker = sys.argv[1]
+          database = Path("/app/data/ditaknet.db")
+          secret = Path("/app/data/.session_secret")
+          with sqlite3.connect(database) as connection:
+              connection.execute(
+                  "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)",
+                  ("ci_persistence_marker", marker),
+              )
+              connection.commit()
+              stored = connection.execute(
+                  "SELECT value FROM app_settings WHERE key = ?",
+                  ("ci_persistence_marker",),
+              ).fetchone()[0]
+          stat = os.stat(database)
+          print(json.dumps({
+              "marker": stored,
+              "secret_sha256": hashlib.sha256(secret.read_bytes()).hexdigest(),
+              "database_device": stat.st_dev,
+              "database_inode": stat.st_ino,
+          }, sort_keys=True))
+          PY
+          }
+
+          smoke_image() {
+            local arch="$1"
+            local port="$2"
+            local name="ditaknet-ci-${arch}"
+            local image="ditaknet:ci-${arch}"
+            local root="${RUNNER_TEMP}/ditaknet-smoke-${arch}"
+            local volume_prefix="${RUN_SCOPE}-${arch}"
+            local marker="${GITHUB_SHA}-${arch}"
+
+            mkdir -p "$root"
+            for path in data logs backups plugins; do
+              docker volume create "${volume_prefix}-${path}" >/dev/null
+            done
+
+            # Simulate files written by the legacy root-running 2.0.1 image,
+            # then execute the same capability-scoped ownership migration as
+            # docker-compose.yml before starting the hardened non-root image.
+            docker run --rm --platform "linux/${arch}" --user 0:0 \
+              -v "${volume_prefix}-data:/app/data" \
+              --entrypoint sh "$image" -c \
+              'mkdir -p /app/data/legacy && printf legacy > /app/data/legacy/root-owned.txt && chown -R 0:0 /app/data/legacy'
+            docker run --rm --platform "linux/${arch}" \
+              --network none \
+              --user 0:0 \
+              --read-only \
+              --cap-drop ALL \
+              --cap-add CHOWN \
+              --security-opt no-new-privileges:true \
+              --pids-limit 32 \
+              -v "${volume_prefix}-data:/app/data" \
+              -v "${volume_prefix}-logs:/app/logs" \
+              -v "${volume_prefix}-backups:/app/backups" \
+              -v "${volume_prefix}-plugins:/app/plugins" \
+              --entrypoint chown "$image" \
+              --recursive --no-dereference 568:568 \
+              /app/data /app/logs /app/backups /app/plugins
+            docker run --rm --platform "linux/${arch}" --user 568:568 \
+              -v "${volume_prefix}-data:/app/data:ro" \
+              --entrypoint sh "$image" -c \
+              'test -r /app/data/legacy/root-owned.txt && test "$(stat -c %u:%g /app/data/legacy/root-owned.txt)" = 568:568'
+
+            docker run -d --name "$name" \
+              --platform "linux/${arch}" \
+              -p "127.0.0.1:${port}:5833" \
+              --user 568:568 \
+              --read-only \
+              --tmpfs /tmp:rw,noexec,nosuid,nodev,size=67108864,uid=568,gid=568,mode=1770 \
+              --cap-drop ALL \
+              --cap-add NET_RAW \
+              --security-opt no-new-privileges:true \
+              --pids-limit 256 \
+              -e APP_ENV=production \
+              -e APP_VERSION="$RELEASE_VERSION" \
+              -e IMAGE_TAG="$RELEASE_VERSION" \
+              -v "${volume_prefix}-data:/app/data" \
+              -v "${volume_prefix}-logs:/app/logs" \
+              -v "${volume_prefix}-backups:/app/backups" \
+              -v "${volume_prefix}-plugins:/app/plugins" \
+              "$image"
+
+            wait_healthy "$name"
+
+            curl --fail --silent --show-error \
+              "http://127.0.0.1:${port}/health" >"$root/health.json"
+            python - "$root/health.json" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              assert json.load(handle).get("status") == "healthy"
+          PY
+            assert_deep_health "$port" "$root/deep-before.json"
+            local status
+            status="$(curl --silent --show-error --output "$root/login.html" \
+              --write-out '%{http_code}' "http://127.0.0.1:${port}/login")"
+            [[ "$status" =~ ^(200|302|303)$ ]]
+
+            docker exec "$name" python -c \
+              'import os; assert (os.geteuid(), os.getegid()) == (568, 568)'
+            docker exec "$name" ping -c 1 -W 2 127.0.0.1 >/dev/null
+            docker exec -i "$name" python - <<'PY'
+          from pathlib import Path
+
+          for directory in ("data", "logs", "backups", "plugins"):
+              probe = Path("/app") / directory / ".ci-write-probe"
+              probe.write_text("ok", encoding="utf-8")
+              probe.unlink()
+          try:
+              Path("/app/.ci-rootfs-probe").write_text("not allowed", encoding="utf-8")
+          except OSError:
+              pass
+          else:
+              raise AssertionError("read-only root filesystem accepted a write")
+          PY
+
+            docker inspect "$name" >"$root/inspect.json"
+            python - "$root/inspect.json" <<'PY'
+          import json
+          import sys
+
+          container = json.load(open(sys.argv[1], encoding="utf-8"))[0]
+          host = container["HostConfig"]
+          assert container["Config"]["User"] == "568:568"
+          assert host["ReadonlyRootfs"] is True
+          assert host["CapDrop"] == ["ALL"]
+          assert host["CapAdd"] == ["NET_RAW"]
+          assert host["PidsLimit"] == 256
+          assert "no-new-privileges:true" in host["SecurityOpt"]
+          mounts = {item["Destination"]: item for item in container["Mounts"]}
+          for destination in ("/app/data", "/app/logs", "/app/backups", "/app/plugins"):
+              assert mounts[destination]["Type"] == "volume", mounts[destination]
+          PY
+
+            capture_persistence_state "$name" "$marker" "$root/state-before.json"
+            docker restart "$name" >/dev/null
+            wait_healthy "$name"
+            assert_deep_health "$port" "$root/deep-after.json"
+            capture_persistence_state "$name" "$marker" "$root/state-after.json"
+            python - "$root/state-before.json" "$root/state-after.json" <<'PY'
+          import json
+          import sys
+
+          before = json.load(open(sys.argv[1], encoding="utf-8"))
+          after = json.load(open(sys.argv[2], encoding="utf-8"))
+          assert before == after, {"before": before, "after": after}
+          PY
+            docker rm -f "$name" >/dev/null
+          }
+
+          smoke_image amd64 5833
+          smoke_image arm64 5834
+
+      - name: Report all amd64 high/critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ditaknet:ci-amd64
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          timeout: 10m0s
+          version: v0.70.0
+
+      - name: Gate actionable amd64 high/critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ditaknet:ci-amd64
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+          timeout: 10m0s
+          version: v0.70.0
+
+      - name: Report all arm64 high/critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ditaknet:ci-arm64
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          timeout: 10m0s
+          version: v0.70.0
+
+      - name: Gate actionable arm64 high/critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ditaknet:ci-arm64
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+          timeout: 10m0s
+          version: v0.70.0
+
+      - name: Generate an SPDX SBOM from the amd64 image
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
-          image: ditaknet:ci-local
+          image: ditaknet:ci-amd64
           format: spdx-json
-          output-file: ${{ runner.temp }}/ditaknet-image.spdx.json
+          output-file: ${{ runner.temp }}/ditaknet-image-amd64.spdx.json
           syft-version: v1.48.0
           dependency-snapshot: false
           upload-artifact: false
           upload-release-assets: false
 
-      - name: Export the smoke-tested release image
-        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
-        run: docker save ditaknet:ci-local | gzip -9 > "${RUNNER_TEMP}/ditaknet-image.tar.gz"
+      - name: Generate an SPDX SBOM from the arm64 image
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ditaknet:ci-arm64
+          format: spdx-json
+          output-file: ${{ runner.temp }}/ditaknet-image-arm64.spdx.json
+          syft-version: v1.48.0
+          dependency-snapshot: false
+          upload-artifact: false
+          upload-release-assets: false
 
-      - name: Store the smoke-tested release image
+      - name: Export the smoke-tested release images
+        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+        run: |
+          docker save ditaknet:ci-amd64 | gzip -9 > "${RUNNER_TEMP}/ditaknet-image-amd64.tar.gz"
+          docker save ditaknet:ci-arm64 | gzip -9 > "${RUNNER_TEMP}/ditaknet-image-arm64.tar.gz"
+
+      - name: Store the smoke-tested release images
         if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ditaknet-image-${{ github.run_id }}-${{ github.run_attempt }}
+          # run_id remains stable for both "re-run failed jobs" and "re-run
+          # all jobs". The latter safely replaces the prior producer artifact.
+          name: ditaknet-image-${{ github.run_id }}
           path: |
-            ${{ runner.temp }}/ditaknet-image.tar.gz
-            ${{ runner.temp }}/ditaknet-image.spdx.json
+            ${{ runner.temp }}/ditaknet-image-amd64.tar.gz
+            ${{ runner.temp }}/ditaknet-image-arm64.tar.gz
+            ${{ runner.temp }}/ditaknet-image-amd64.spdx.json
+            ${{ runner.temp }}/ditaknet-image-arm64.spdx.json
           if-no-files-found: error
+          overwrite: true
           retention-days: 1
 
   publish:
-    name: Publish immutable GHCR release
+    name: Publish immutable multi-arch GHCR release
     needs:
       - quality
       - image-smoke
@@ -312,7 +622,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' &&
        github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
@@ -328,14 +638,21 @@ jobs:
       - name: Download the smoke-tested release image
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: ditaknet-image-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ditaknet-image-${{ github.run_id }}
           path: ${{ runner.temp }}/ditaknet-release
 
-      - name: Load the smoke-tested release image
-        run: gunzip --stdout "${RUNNER_TEMP}/ditaknet-release/ditaknet-image.tar.gz" | docker load
+      - name: Load and verify the smoke-tested release images
+        run: |
+          set -euo pipefail
+          gunzip --stdout "${RUNNER_TEMP}/ditaknet-release/ditaknet-image-amd64.tar.gz" | docker load
+          gunzip --stdout "${RUNNER_TEMP}/ditaknet-release/ditaknet-image-arm64.tar.gz" | docker load
+          [[ "$(docker image inspect --format '{{.Architecture}}' ditaknet:ci-amd64)" == "amd64" ]]
+          [[ "$(docker image inspect --format '{{.Architecture}}' ditaknet:ci-arm64)" == "arm64" ]]
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          version: v0.34.1
 
       - name: Log in to GHCR
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
@@ -344,79 +661,158 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Refuse to overwrite an immutable version tag
+      - name: Refuse to overwrite the immutable public release tag
         shell: bash
         env:
           RELEASE_VERSION: ${{ needs.quality.outputs.version }}
         run: |
           set -euo pipefail
           set +e
-          INSPECT_OUTPUT="$(docker buildx imagetools inspect \
+          inspect_output="$(docker buildx imagetools inspect \
             "$IMAGE:$RELEASE_VERSION" 2>&1)"
-          INSPECT_STATUS=$?
+          inspect_status=$?
           set -e
-          if [[ "$INSPECT_STATUS" == "0" ]]; then
-            echo "$IMAGE:$RELEASE_VERSION already exists; version tags are immutable." >&2
+          if [[ "$inspect_status" == "0" ]]; then
+            echo "$IMAGE:$RELEASE_VERSION already exists; release tags are immutable." >&2
             exit 1
           fi
           if ! grep -Eqi '(manifest unknown|name unknown|not found)' \
-            <<<"$INSPECT_OUTPUT"; then
+            <<<"$inspect_output"; then
             echo "Could not safely determine whether the release tag exists:" >&2
-            echo "$INSPECT_OUTPUT" >&2
+            echo "$inspect_output" >&2
             exit 1
           fi
 
-      - name: Publish the exact smoke-tested image
+      - name: Publish exact per-architecture images and manifest list
         id: push
         env:
           RELEASE_VERSION: ${{ needs.quality.outputs.version }}
         run: |
           set -euo pipefail
-          TARGET="$IMAGE:$RELEASE_VERSION"
-          docker tag ditaknet:ci-local "$TARGET"
-          PUSH_OUTPUT="$(docker push "$TARGET" 2>&1)"
-          echo "$PUSH_OUTPUT"
-          DIGEST="$(printf '%s\n' "$PUSH_OUTPUT" | awk '
-            { for (i = 1; i <= NF; i++)
-                if ($i == "digest:" && $(i + 1) ~ /^sha256:/) print $(i + 1) }
-          ' | tail -n 1)"
-          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "GHCR did not return a valid manifest digest." >&2
+          push_arch() {
+            local arch="$1"
+            # Run-unique staging makes a partial architecture push retryable.
+            # Only the final exact SemVer index is release-facing and immutable.
+            local target="$IMAGE:$RELEASE_VERSION-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$arch"
+            local output digest
+            docker tag "ditaknet:ci-$arch" "$target"
+            output="$(docker push "$target" 2>&1)"
+            echo "$output" >&2
+            digest="$(printf '%s\n' "$output" | awk '
+              { for (i = 1; i <= NF; i++)
+                  if ($i == "digest:" && $(i + 1) ~ /^sha256:/) print $(i + 1) }
+            ' | tail -n 1)"
+            if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "GHCR did not return a valid $arch manifest digest." >&2
+              exit 1
+            fi
+            printf '%s' "$digest"
+          }
+
+          AMD64_DIGEST="$(push_arch amd64)"
+          ARM64_DIGEST="$(push_arch arm64)"
+          STAGING_TARGET="$IMAGE:$RELEASE_VERSION-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-index"
+          docker buildx imagetools create \
+            --tag "$STAGING_TARGET" \
+            "$IMAGE@$AMD64_DIGEST" \
+            "$IMAGE@$ARM64_DIGEST"
+
+          INSPECT_OUTPUT="$(docker buildx imagetools inspect "$STAGING_TARGET")"
+          echo "$INSPECT_OUTPUT"
+          INDEX_DIGEST="$(printf '%s\n' "$INSPECT_OUTPUT" | \
+            awk '$1 == "Digest:" { print $2; exit }')"
+          if [[ ! "$INDEX_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "GHCR did not return a valid staging index digest." >&2
             exit 1
           fi
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Attest build provenance for the published image digest
+          docker buildx imagetools inspect --raw "$STAGING_TARGET" > "$RUNNER_TEMP/index.json"
+          python - "$RUNNER_TEMP/index.json" <<'PY'
+          import json
+          import sys
+
+          index = json.load(open(sys.argv[1], encoding="utf-8"))
+          platforms = {
+              (item.get("platform") or {}).get("os", "") + "/" +
+              (item.get("platform") or {}).get("architecture", "")
+              for item in index.get("manifests", [])
+          }
+          assert platforms == {"linux/amd64", "linux/arm64"}, platforms
+          PY
+          echo "amd64_digest=$AMD64_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "arm64_digest=$ARM64_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "index_digest=$INDEX_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Attest build provenance for the validated staging index
         id: provenance
         uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-digest: ${{ steps.push.outputs.index_digest }}
           push-to-registry: true
           create-storage-record: false
 
-      - name: Attest the smoke-tested image SBOM
-        id: sbom
+      - name: Attest the smoke-tested amd64 image SBOM
+        id: sbom-amd64
         uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          sbom-path: ${{ runner.temp }}/ditaknet-release/ditaknet-image.spdx.json
+          subject-digest: ${{ steps.push.outputs.amd64_digest }}
+          sbom-path: ${{ runner.temp }}/ditaknet-release/ditaknet-image-amd64.spdx.json
           push-to-registry: true
           create-storage-record: false
+
+      - name: Attest the smoke-tested arm64 image SBOM
+        id: sbom-arm64
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.arm64_digest }}
+          sbom-path: ${{ runner.temp }}/ditaknet-release/ditaknet-image-arm64.spdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      # The immutable SemVer tag is deliberately the final registry mutation.
+      # Architecture pushes, index validation, vulnerability gates and signed
+      # attestations have all succeeded before this step runs.
+      - name: Finalize the immutable SemVer release tag
+        id: finalize
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.quality.outputs.version }}
+          INDEX_DIGEST: ${{ steps.push.outputs.index_digest }}
+        run: |
+          set -euo pipefail
+          TARGET="$IMAGE:$RELEASE_VERSION"
+          docker buildx imagetools create \
+            --tag "$TARGET" \
+            "$IMAGE@$INDEX_DIGEST"
+          INSPECT_OUTPUT="$(docker buildx imagetools inspect "$TARGET")"
+          echo "$INSPECT_OUTPUT"
+          PUBLISHED_DIGEST="$(printf '%s\n' "$INSPECT_OUTPUT" | \
+            awk '$1 == "Digest:" { print $2; exit }')"
+          if [[ "$PUBLISHED_DIGEST" != "$INDEX_DIGEST" ]]; then
+            echo "Final tag digest does not match the attested staging index." >&2
+            exit 1
+          fi
+          echo "digest=$PUBLISHED_DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Write release summary
         env:
           RELEASE_VERSION: ${{ needs.quality.outputs.version }}
-          IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
+          IMAGE_DIGEST: ${{ steps.finalize.outputs.digest }}
+          AMD64_DIGEST: ${{ steps.push.outputs.amd64_digest }}
+          ARM64_DIGEST: ${{ steps.push.outputs.arm64_digest }}
         run: |
           {
             echo "## DitakNet GHCR release"
             echo
             echo "- Version: \`$RELEASE_VERSION\`"
             echo "- Image: \`$IMAGE:$RELEASE_VERSION\`"
-            echo "- Digest: \`$IMAGE_DIGEST\`"
+            echo "- Multi-arch digest: \`$IMAGE_DIGEST\`"
+            echo "- linux/amd64: \`$AMD64_DIGEST\` (runtime-smoked and scanned)"
+            echo "- linux/arm64: \`$ARM64_DIGEST\` (QEMU runtime-smoked and scanned)"
             echo "- Build provenance: signed and attached by digest"
-            echo "- SBOM: SPDX JSON, signed and attached by digest"
+            echo "- SBOM: per-architecture SPDX JSON, signed and attached by digest"
             echo "- Floating tags were not modified"
           } >> "$GITHUB_STEP_SUMMARY"

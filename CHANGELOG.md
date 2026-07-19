@@ -8,8 +8,22 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Changed fresh repository Compose installs from checkout-relative bind mounts
+  to Docker-managed named volumes. Existing deployments must preserve all four
+  legacy bind sources through `DITAKNET_*_SOURCE` before using the new Compose
+  file; the upgrade guide includes a mandatory mount/ownership preflight.
+
 ### Fixed
 
+- Made fresh Docker installs writable as non-root by default through
+  Docker-managed volumes and a capability-scoped ownership initializer that
+  never receives operator bind paths.
+- Added complete TrueNAS host-path permission choices, including explicit
+  automatic ownership and ACL-managed modes for all four persistent datasets.
+- Made immutable image publication transactional by keeping the public SemVer
+  tag absent until the multi-architecture index and attestations are complete.
 - Made SQLite backups WAL-safe by using an online snapshot and validating ZIP,
   manifest, and database integrity before restore.
 - Made additive migration bookkeeping idempotent on fresh and existing databases.
@@ -32,6 +46,18 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Added independently built and smoke-tested `linux/amd64` and `linux/arm64`
+  images, with exact platform-index validation, restart persistence probes,
+  deep health/version checks, and per-architecture SPDX SBOMs.
+- Added a non-root UID/GID `568:568` runtime, read-only root filesystem,
+  `no-new-privileges`, PID limits, and an allowlist containing only `NET_RAW`.
+- Added two-tier Trivy scanning: complete vulnerability reports plus a release
+  gate for fixable high/critical findings.
+- Added deterministic TrueNAS catalog validation and rendering against a pinned
+  official `truenas/apps` library commit for bridge, host-network, automatic
+  permission, and ACL variants.
+- Added Docker/TrueNAS install, upgrade, rollback, release, and update/migration
+  safety documentation, plus Dependabot coverage for pip, Docker, and Actions.
 - Added isolated regression coverage for authentication/RBAC/CSRF, monitoring
   checks, scheduler retries, health aggregation, SQLite migrations, updates,
   release consistency, locale JSON, and backup/restore compatibility.

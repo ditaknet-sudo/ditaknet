@@ -1,6 +1,7 @@
 # DitakNet TrueNAS icon
 
-- `icon.svg` is a simple placeholder for catalog packaging.
-- Before submitting to `truenas/apps`, replace it with the official DitakNet
-  brand mark and update `app.yaml` → `icon:` to the hosted TrueNAS media URL
-  (or the URL maintainers request in CONTRIBUTIONS.md).
+- `icon.svg` is the repository-hosted DitakNet catalog mark used during app
+  development.
+- During upstream review, follow the current `truenas/apps` maintainer process
+  to publish the approved asset to TrueNAS media. Update both `app.yaml` and
+  `item.yaml` to the reviewer-provided URL before merge.

@@ -102,13 +102,18 @@ def main() -> int:
                 _env_value("config/runtime.env", "IMAGE_TAG", "runtime IMAGE_TAG"),
                 _capture(
                     "docker-compose.yml",
-                    r"APP_VERSION:\s*\$\{APP_VERSION:-([^}]+)\}",
-                    "Docker Compose APP_VERSION fallback",
+                    r"image:\s*ghcr\.io/ditaknet-sudo/ditaknet:\$\{DITAKNET_VERSION:-([^}]+)\}",
+                    "Docker Compose image fallback",
                 ),
                 _capture(
                     "docker-compose.yml",
-                    r"IMAGE_TAG:\s*\$\{IMAGE_TAG:-([^}]+)\}",
-                    "Docker Compose IMAGE_TAG fallback",
+                    r"APP_VERSION:\s*\$\{DITAKNET_VERSION:-([^}]+)\}",
+                    "Docker Compose runtime APP_VERSION fallback",
+                ),
+                _capture(
+                    "docker-compose.yml",
+                    r"IMAGE_TAG:\s*\$\{DITAKNET_VERSION:-([^}]+)\}",
+                    "Docker Compose runtime IMAGE_TAG fallback",
                 ),
                 _capture(
                     "truenas/docker-compose.yml",
@@ -134,16 +139,6 @@ def main() -> int:
                     "truenas-catalog/ix-dev/community/ditaknet/ix_values.yaml",
                     r'^\s*tag:\s*["\']?([^"\'\s]+)["\']?\s*$',
                     "TrueNAS catalog image tag",
-                ),
-                _capture(
-                    "truenas-catalog/ix-dev/community/ditaknet/questions.yaml",
-                    r'variable:\s*image_tag.*?default:\s*["\']?([^"\'\s]+)["\']?\s*$',
-                    "TrueNAS catalog question default",
-                ),
-                _capture(
-                    "truenas-catalog/ix-dev/community/ditaknet/templates/test_values/basic-values.yaml",
-                    r'^\s*image_tag:\s*["\']?([^"\'\s]+)["\']?\s*$',
-                    "TrueNAS catalog test image tag",
                 ),
                 _capture(
                     "README.md",

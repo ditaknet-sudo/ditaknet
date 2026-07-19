@@ -1,0 +1,55 @@
+# Production-style Host Paths using normalized TrueNAS ACL-backed paths.
+TZ: Etc/UTC
+
+ditaknet:
+  app_base_url: ""
+  discovery_dns_servers: ""
+
+run_as:
+  user: 568
+  group: 568
+
+network:
+  host_network: false
+  web_port:
+    bind_mode: published
+    port_number: 25833
+    host_ips:
+      - 127.0.0.1
+
+storage:
+  data:
+    type: host_path
+    host_path_config:
+      acl_enable: true
+      acl:
+        path: /opt/tests/mnt/ditaknet-host-path-acl/data
+      auto_permissions: false
+  logs:
+    type: host_path
+    host_path_config:
+      acl_enable: true
+      acl:
+        path: /opt/tests/mnt/ditaknet-host-path-acl/logs
+      auto_permissions: false
+  backups:
+    type: host_path
+    host_path_config:
+      acl_enable: true
+      acl:
+        path: /opt/tests/mnt/ditaknet-host-path-acl/backups
+      auto_permissions: false
+  plugins:
+    type: host_path
+    host_path_config:
+      acl_enable: true
+      acl:
+        path: /opt/tests/mnt/ditaknet-host-path-acl/plugins
+      auto_permissions: false
+
+resources:
+  limits:
+    cpus: 2
+    memory: 2048
+
+ci: true

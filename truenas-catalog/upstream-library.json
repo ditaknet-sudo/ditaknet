@@ -1,0 +1,9 @@
+{
+  "source": "https://raw.githubusercontent.com/truenas/apps/f733713ecfda1d683043775e6d9cc8f09545e1b3/library/hashes.yaml",
+  "latest_library_index": "https://raw.githubusercontent.com/truenas/apps/master/library/hashes.yaml",
+  "catalog_repository": "https://github.com/truenas/apps.git",
+  "catalog_commit": "f733713ecfda1d683043775e6d9cc8f09545e1b3",
+  "checked_at": "2026-07-20",
+  "version": "2.3.8",
+  "sha256": "cd75c897a1e8fef54b5bd00d0d8849f240bc50db2ef650eccc0ee74f3b2b2dc1"
+}

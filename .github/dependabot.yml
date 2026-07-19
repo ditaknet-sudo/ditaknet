@@ -1,0 +1,40 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Asia/Yerevan
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - security
+
+  # Updates both the python:3.11-slim tag and its immutable manifest digest.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:15"
+      timezone: Asia/Yerevan
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - security
+
+  # Workflow actions are SHA-pinned; Dependabot refreshes the commit while
+  # preserving the human-readable version comment beside each action.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:30"
+      timezone: Asia/Yerevan
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - security

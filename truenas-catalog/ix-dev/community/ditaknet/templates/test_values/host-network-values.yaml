@@ -1,26 +1,26 @@
-# Bridge-network + ixVolume values used by the official truenas/apps renderer.
+# Host-network + ixVolume values exercise the no-port-publish render path.
 TZ: Etc/UTC
 
 ditaknet:
   app_base_url: ""
-  discovery_dns_servers: ""
+  discovery_dns_servers: 192.168.1.1
 
 run_as:
   user: 568
   group: 568
 
 network:
-  host_network: false
+  host_network: true
   web_port:
     bind_mode: published
     port_number: 5833
     host_ips: []
 
 ix_volumes:
-  data: /opt/tests/mnt/ditaknet/data
-  logs: /opt/tests/mnt/ditaknet/logs
-  backups: /opt/tests/mnt/ditaknet/backups
-  plugins: /opt/tests/mnt/ditaknet/plugins
+  data: /opt/tests/mnt/ditaknet-host/data
+  logs: /opt/tests/mnt/ditaknet-host/logs
+  backups: /opt/tests/mnt/ditaknet-host/backups
+  plugins: /opt/tests/mnt/ditaknet-host/plugins
 
 storage:
   data:

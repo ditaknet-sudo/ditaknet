@@ -15,21 +15,52 @@
 services:
   ditaknet:
     image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-2.0.1}
-    container_name: ditaknet
+    pull_policy: missing
     restart: unless-stopped
-    ports:
-      - "5833:5833"
-    volumes:
-      - ${DITAKNET_DATA_PATH}:/app/data
-      - ${DITAKNET_LOGS_PATH}:/app/logs
-      - ${DITAKNET_BACKUPS_PATH}:/app/backups
-      - ${DITAKNET_PLUGINS_PATH}:/app/plugins
+    init: true
+    user: "568:568"
+    read_only: true
+    privileged: false
+    pids_limit: 256
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges=true
+    cap_drop:
+      - ALL
     cap_add:
       - NET_RAW
+    ports:
+      - "${DITAKNET_BIND_ADDRESS:-0.0.0.0}:${DITAKNET_PORT:-5833}:5833/tcp"
+    volumes:
+      - type: bind
+        source: ${DITAKNET_DATA_PATH:-/mnt/tank/apps/ditaknet/data}
+        target: /app/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DITAKNET_LOGS_PATH:-/mnt/tank/apps/ditaknet/logs}
+        target: /app/logs
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DITAKNET_BACKUPS_PATH:-/mnt/tank/apps/ditaknet/backups}
+        target: /app/backups
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DITAKNET_PLUGINS_PATH:-/mnt/tank/apps/ditaknet/plugins}
+        target: /app/plugins
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp:size=64m,mode=1770,uid=568,gid=568,noexec,nosuid,nodev
     environment:
       APP_ENV: production
       APP_HOST: "0.0.0.0"
       APP_PORT: "5833"
+      HOME: /tmp
+      TMPDIR: /tmp
+      TZ: ${TZ:-Etc/UTC}
       DATA_DIR: /app/data
       LOG_DIR: /app/logs
       BACKUP_DIR: /app/backups
@@ -48,3 +79,8 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -4,34 +4,34 @@ capabilities:
     name: NET_RAW
 categories:
   - monitoring
-  - networking
 changelog_url: https://github.com/ditaknet-sudo/ditaknet/releases
 date_added: "2026-07-12"
 description: Self-hosted local network discovery, monitoring, alerts, and licensing dashboard.
 home: https://github.com/ditaknet-sudo/ditaknet
 host_mounts: []
-icon: https://media.sys.truenas.net/apps/ditaknet/icons/icon.svg
+icon: https://raw.githubusercontent.com/ditaknet-sudo/ditaknet/main/truenas-catalog/icons/icon.svg
 keywords:
   - monitoring
   - network
   - discovery
   - lan
   - ditaknet
-lib_version: 2.3.4
-lib_version_hash: REPLACE_WITH_UPSTREAM_LIBRARY_HASH
+lib_version: 2.3.8
+lib_version_hash: cd75c897a1e8fef54b5bd00d0d8849f240bc50db2ef650eccc0ee74f3b2b2dc1
 maintainers:
-  - email: support@example.com
-    name: DitakNet
-    url: https://github.com/ditaknet-sudo/ditaknet
+  - email: dev@truenas.com
+    name: truenas
+    url: https://www.truenas.com/
 name: ditaknet
 run_as_context:
-  - description: DitakNet container; prefer non-root where possible. Discovery may need elevated caps (NET_RAW).
+  - description: DitakNet runs as the configured non-root user and group (568:568 by default).
     gid: 568
-    group_name: apps
+    group_name: Host group is [apps]
     uid: 568
-    user_name: apps
+    user_name: Host user is [apps]
 screenshots: []
 sources:
+  - https://apps.truenas.com/catalog/ditaknet_community/
   - https://github.com/ditaknet-sudo/ditaknet
   - https://ghcr.io/ditaknet-sudo/ditaknet
 title: DitakNet
