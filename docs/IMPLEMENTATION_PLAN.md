@@ -328,8 +328,24 @@
 - Փուլ 4-ը փակված է։ Փուլերի մնացորդը հիմա **1** է՝ Փուլ 5-ի իրական Docker և
   TrueNAS SCALE install/upgrade/rollback փորձարկումները։
 
+### 2026-07-22 — Փուլ 5, Docker runtime smoke
+
+- Docker Desktop Linux engine-ը հասանելի էր։ Repo-ից կառուցվեց մեկուսացված
+  local image՝ `phase5-e2c9445` tag-ով, առանց production `data` directory-ի
+  օգտագործման։
+- Առանձին `ditaknet-phase5` Compose project/volumes-ով անցան `/health` և
+  `/health/deep` checks-ը, SQLite quick-check/foreign-key/schema/migration
+  validation-ը, 568:568 non-root/read-only/capability/pids runtime checks-ը և
+  restart persistence-ը։
+- Test container-ը, volumes-ը, network-ը և local image-ը մաքրվեցին։ Գործող
+  `ditaknet-monitoring` container-ը չփոփոխվեց։
+- Docker ենթափուլը՝ **անցած**։ TrueNAS SCALE-ի իրական install/upgrade/rollback
+  փորձը դեռ pending է, քանի որ այս workstation-ում TrueNAS host կամ ZFS test
+  pool հասանելի չէ։ Այն չի փոխարինվում միայն Compose render-ով։
+
 ## Հաջորդ հաշվետվություն
 
-Հաջորդ հաշվետվությունը կսկսի Փուլ 5-ի նախապատրաստումը։ Production signing key
+Հաջորդ քայլը TrueNAS SCALE-ի մեկուսացված test host/pool-ի վրա install → backup →
+upgrade → rollback → deep-health փորձարկումն է։ Production signing key
 provisioning-ը, protected environments/update-feed protection-ը և առաջին նոր
-SemVer release-ը մնում են հստակ արտաքին prerequisite-ներ։
+SemVer release-ը մնում են առանձին արտաքին prerequisite-ներ։
