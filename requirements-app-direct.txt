@@ -1,6 +1,6 @@
 # Direct runtime dependencies. Do not install this file in release builds.
 # Run `python scripts/lock_dependencies.py` to refresh requirements.txt.
-fastapi==0.139.0
+fastapi==0.139.2
 uvicorn[standard]==0.49.0
 aiosqlite==0.22.1
 pydantic==2.13.4
