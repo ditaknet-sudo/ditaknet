@@ -312,21 +312,24 @@
   JavaScript syntax check-ը, release/version consistency-ը, 7 JSON ֆայլերի parse-ը,
   actionlint-ը, Compose config-ը և TrueNAS upstream/catalog render validation-ը
   կանաչ են։
-- Clean-clone verification-ը, commit/push-ը, CI-ի Bandit/pip-audit/secret-scan
-  gates-ը և նոր GitHub Actions run-ը այս գրառման պահին դեռ pending են։
+- Reviewed commit `e2c9445`-ի առանձին clean clone-ը նորից անցավ ամբողջ suite-ը՝
+  **216 passed, 0 failed, 1 local warning**, release consistency-ը, Compose և
+  TrueNAS catalog validation-ը։
+- `e2c9445`-ը fast-forward push արվեց `origin/main`։ GitHub Actions [run
+  #29946732748](https://github.com/ditaknet-sudo/ditaknet/actions/runs/29946732748)
+  ավարտվեց **success**․ quality/security/configuration gates, երկու architecture-ի
+  build, exact image smoke, vulnerability report/blocking checks և SPDX SBOM-ները
+  կանաչ են։ Main push-ի GitHub Release/GHCR/feed publish jobs-ը սպասվածի պես
+  **skipped** են։
 - Production signing material չի ստեղծվել կամ commit արվել։ Committed keyring-ի
   `stable` և `beta` բաժինները դիտավորյալ դատարկ են։ Արտաքին owner action է մնում
   public key provisioning-ը, protected environment private-key secrets-ը,
   `update-feed` branch protection-ը և առաջին նոր SemVer release-ի հաստատումը։
-- Փուլերի մնացորդը այս checkpoint-ում 2 է՝ ընթացիկ Փուլ 4-ի validation/push/CI
-  փակումը և Փուլ 5-ի իրական Docker/TrueNAS upgrade/rollback փորձարկումները։
-  Փուլ 4-ը հաստատելուց հետո կմնա 1 փուլ։
+- Փուլ 4-ը փակված է։ Փուլերի մնացորդը հիմա **1** է՝ Փուլ 5-ի իրական Docker և
+  TrueNAS SCALE install/upgrade/rollback փորձարկումները։
 
 ## Հաջորդ հաշվետվություն
 
-Հաջորդ հաշվետվությունը կփակի Փուլ 4-ը միայն full local validation re-run,
-clean-clone verification, reviewed commit/push և հաջող remote GitHub CI-ից հետո։ Production
-signing key provisioning-ը, protected environments/update-feed protection-ը և
-առաջին նոր SemVer release-ը կմնան հստակ արտաքին prerequisite-ներ։ Դրանից հետո
-կմնա միայն Փուլ 5-ը՝ իրական մեկուսացված Docker և TrueNAS SCALE install/upgrade/
-rollback validation-ը։
+Հաջորդ հաշվետվությունը կսկսի Փուլ 5-ի նախապատրաստումը։ Production signing key
+provisioning-ը, protected environments/update-feed protection-ը և առաջին նոր
+SemVer release-ը մնում են հստակ արտաքին prerequisite-ներ։
