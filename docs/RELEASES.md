@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | `v2.0.1` | `ghcr.io/ditaknet-sudo/ditaknet:2.0.1` | Git tag and legacy amd64 image exist; GitHub Release page is not published |
 | `v2.0.0` | `ghcr.io/ditaknet-sudo/ditaknet:2.0.0` | Previous legacy image |
-| none | `ghcr.io/ditaknet-sudo/ditaknet:latest` | Not published or moved by the stable workflow |
+| none | `ghcr.io/ditaknet-sudo/ditaknet:latest` | A historical alias may exist; unsupported and never published or moved by the current workflow |
 
 Git tags include `v`; image tags do not. Stable deployments always pin a full
 `X.Y.Z` tag and should record the resolved image digest. Never overwrite or
@@ -24,23 +24,41 @@ must explicitly retain its existing four paths through `DITAKNET_*_SOURCE`
 before the new Compose file is started; see [`UPGRADE.md`](UPGRADE.md). This
 mount migration warning must be included in the next release notes.
 
-The current `update-manifest.json` points to a `v2.0.1` GitHub Release URL that
-does not yet resolve because only the git tag exists. Publishing or correcting
-that release record is tracked as release-process debt; clients must treat a
-missing release page as unavailable evidence, not as proof of a completed
-release.
+The root `update-manifest.json` is a schema-v1 legacy feed for `2.0.1`. It links
+to the immutable git tag tree because no GitHub Release was published, reports
+only `linux/amd64`, and cannot unlock the Phase 4 managed handoff. New releases
+use a strict, signed schema-v2 manifest attached to the GitHub Release and then
+promoted to the selected `stable` or `beta` feed.
+
+Phase 4 remains unreleased. The committed channel keyring is deliberately empty
+until external protected-environment signing keys/secrets and update-feed branch
+protection are provisioned. Therefore no new release should be advertised from
+these source changes alone.
 
 ## Release gate
 
 A release candidate must pass, in order:
 
 1. locked dependency installation and vulnerability/security checks;
-2. complete automated tests and release/version consistency checks;
+2. complete automated tests and release/version consistency checks, including
+   mounted database-directory lifetime-lock enforcement, explicit legacy/
+   pre-lock shutdown, live/setup restore rejection, bounded ZIP validation, and
+   stopped-container restore/receipt recovery;
 3. Docker image build and `/health` smoke test of that exact image;
 4. TrueNAS bridge/host Compose validation and catalog static/render tests;
-5. immutable-tag guard confirming the version does not already exist;
-6. publication of the already smoke-tested artifact under the exact tag;
-7. release evidence such as SBOM/provenance when configured by the workflow.
+5. channel signing-key verification before any registry mutation;
+6. independently smoke-tested `linux/amd64` and `linux/arm64` staging images,
+   index/digest validation, scans, and verified OCI provenance/SBOM
+   attestations;
+7. signed schema-v2 manifest generation and verification against the committed
+   channel keyring;
+8. immutable exact-tag finalization, or same-digest-only metadata repair;
+9. GitHub Release creation/resume with the byte-identical manifest asset;
+10. monotonic selected-channel feed promotion last.
+
+Schema-v2 rollback policy is limited to `state_restore_required` or
+`unsupported`. `image_only` must fail validation, and `unsupported` must block
+the managed preflight rather than emit tag-only rollback instructions.
 
 The release page must state the supported platforms actually present in the
 published image manifest. Do not claim multi-architecture support unless those
@@ -51,10 +69,13 @@ architectures were built and tested.
 Before tagging a new release, update all release-controlled sources together,
 including:
 
-- application/configuration version defaults;
+- canonical `VERSION` and the derived application/configuration version
+  defaults;
 - Dockerfile and root/TrueNAS Compose exact fallbacks;
 - `.env.example` files;
-- `update-manifest.json` and release notes;
+- legacy root `update-manifest.json`, release notes, and
+  `release/update-policy.json`;
+- the channel public-key ring when performing an approved signing-key rotation;
 - TrueNAS `app.yaml` `app_version` and `ix_values.yaml` image tag;
 - TrueNAS test values and user documentation.
 
@@ -79,9 +100,11 @@ git push origin vX.Y.Z
 ```
 
 Confirm the GitHub Actions release run, GHCR package visibility, exact tag,
-digest, image architecture list, health smoke evidence, and release assets.
-Only then update production or TrueNAS instructions to make the new version the
-recommended tag.
+index/platform digests, health smoke evidence, verified OCI attestations,
+signed GitHub Release manifest asset, and selected channel feed. Only then
+update production or TrueNAS instructions to make the new version the
+recommended tag. The application only produces an external redeploy handoff;
+it never changes the Docker or TrueNAS App by itself.
 
 ## TrueNAS release consumption
 
@@ -90,4 +113,10 @@ while changing only the exact image version. The Compose definitions use
 `pull_policy: missing`, so an offline restart can use the already cached exact
 artifact; an upgrade explicitly selects/pulls another tag. Always follow the
 backup, snapshot, health validation, and compatibility-aware rollback process
-in [`UPGRADE.md`](UPGRADE.md).
+in [`UPGRADE.md`](UPGRADE.md). A `state_restore_required` rollback stops the
+App and every legacy/pre-lock container, recovers all recorded mounted datasets
+from the recursive pre-update ZFS snapshot, or restores with the failed/new
+image's one-shot maintenance CLI against the exact same Data/Backups mounts.
+Only after recovery succeeds does the operator select the previous exact image,
+start the App, and require passing deep health. Live restore through Settings or
+setup is unsupported.

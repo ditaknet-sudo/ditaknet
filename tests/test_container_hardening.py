@@ -29,6 +29,18 @@ def test_dockerfile_uses_digest_pinned_base_and_non_root_runtime() -> None:
     assert "pip uninstall --yes pip" in dockerfile
 
 
+def test_web_process_owns_data_lock_before_opening_sqlite() -> None:
+    main = _read("ditaknet/main.py")
+
+    acquire = main.index("runtime_lock = acquire_runtime_lock(settings.db_path.parent)")
+    open_database = main.index("await db.init_db(str(settings.db_path))")
+    close_database = main.index("await db.close_db()")
+    release = main.index("runtime_lock.release()")
+
+    assert acquire < open_database
+    assert close_database < release
+
+
 def test_root_compose_applies_minimal_runtime_privileges() -> None:
     compose = _read("docker-compose.yml")
 
@@ -80,9 +92,9 @@ def test_release_workflow_preserves_and_gates_both_architecture_artifacts() -> N
     assert '--platform "linux/${arch}"' in workflow
     assert "smoke_image amd64" in workflow
     assert "smoke_image arm64" in workflow
-    assert workflow.index("Set up QEMU for arm64 runtime smoke testing") < workflow.index(
-        "Set up Docker Buildx"
-    )
+    assert workflow.index(
+        "Set up QEMU for arm64 runtime smoke testing"
+    ) < workflow.index("Set up Docker Buildx")
 
     for arch in ("amd64", "arm64"):
         assert f"ditaknet:ci-{arch}" in workflow
@@ -97,7 +109,10 @@ def test_release_workflow_preserves_and_gates_both_architecture_artifacts() -> N
     assert workflow.count("provenance: false") == 2
     assert workflow.count("sbom: false") == 2
     assert workflow.count("name: ditaknet-image-${{ github.run_id }}") == 2
-    assert "name: ditaknet-image-${{ github.run_id }}-${{ github.run_attempt }}" not in workflow
+    assert (
+        "name: ditaknet-image-${{ github.run_id }}-${{ github.run_attempt }}"
+        not in workflow
+    )
     assert "overwrite: true" in workflow
     assert "docker buildx imagetools create" in workflow
     assert "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$arch" in workflow
@@ -105,7 +120,10 @@ def test_release_workflow_preserves_and_gates_both_architecture_artifacts() -> N
     assert workflow.index("Finalize the immutable SemVer release tag") > workflow.index(
         "Attest the smoke-tested arm64 image SBOM"
     )
-    assert "PUBLISHED_DIGEST" in workflow and '"$PUBLISHED_DIGEST" != "$INDEX_DIGEST"' in workflow
+    assert (
+        "PUBLISHED_DIGEST" in workflow
+        and '"$PUBLISHED_DIGEST" != "$INDEX_DIGEST"' in workflow
+    )
     assert '{"linux/amd64", "linux/arm64"}' in workflow
     assert "--read-only" in workflow
     assert "--cap-drop ALL" in workflow
@@ -124,8 +142,8 @@ def test_release_workflow_preserves_and_gates_both_architecture_artifacts() -> N
     assert "ci_persistence_marker" in workflow
     assert "ditaknet:ci-local" not in workflow
     assert ":latest" not in workflow
-    assert 'refs/tags/v$VERSION:refs/tags/v$VERSION' in workflow
-    assert '"$TAG_COMMIT" != "$GITHUB_SHA"' in workflow
+    assert "refs/tags/v$VERSION:refs/tags/v$VERSION" in workflow
+    assert '"$TAG_COMMIT" != "$SOURCE_COMMIT"' in workflow
 
 
 def test_workflow_actions_are_immutable_sha_pinned() -> None:

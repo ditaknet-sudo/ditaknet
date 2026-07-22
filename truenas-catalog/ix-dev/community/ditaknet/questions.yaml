@@ -39,6 +39,18 @@ questions:
           schema:
             type: string
             default: ""
+        - variable: update_channel
+          label: Signed Update Channel
+          description: Stable receives production releases; Beta may receive signed prereleases. Containers are never updated automatically.
+          schema:
+            type: string
+            default: stable
+            required: true
+            enum:
+              - value: stable
+                description: Stable production releases only
+              - value: beta
+                description: Signed beta/prerelease and stable releases
 
   - variable: run_as
     label: ""

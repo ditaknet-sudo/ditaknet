@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import platform
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -27,21 +28,33 @@ system_router = APIRouter(prefix="/system", tags=["system"])
 
 class UpdatePreferenceRequest(BaseModel):
     enabled: bool | None = None
-    action: str | None = None  # snooze | dismiss
+    action: Literal["snooze", "dismiss"] | None = None
     version: str | None = None
-    hours: int | None = None
+    hours: int | None = Field(default=None, ge=1, le=168)
+
+
+class UpdatePreflightRequest(BaseModel):
+    target_version: str = Field(..., min_length=5, max_length=64)
+    confirmation: str = Field(..., min_length=1, max_length=96)
 
 
 async def _scheduler_payload() -> dict:
     try:
         scheduler = get_scheduler()
     except RuntimeError:
-        return {"running": False, "job_count": 0, "jobs": [], "error": "not_initialised"}
+        return {
+            "running": False,
+            "job_count": 0,
+            "jobs": [],
+            "error": "not_initialised",
+        }
     try:
         if hasattr(scheduler, "status"):
             return await scheduler.status()
         sched_obj = getattr(scheduler, "_scheduler", None)
-        jobs = sched_obj.get_jobs() if sched_obj and hasattr(sched_obj, "get_jobs") else []
+        jobs = (
+            sched_obj.get_jobs() if sched_obj and hasattr(sched_obj, "get_jobs") else []
+        )
         return {
             "running": bool(getattr(sched_obj, "running", False)),
             "job_count": len(jobs),
@@ -157,8 +170,58 @@ async def system_update_preferences(
     if action == "snooze":
         return await snooze_update_banner(hours=int(body.hours or 24))
     if action == "dismiss":
-        return await dismiss_update_version(body.version)
+        try:
+            return await dismiss_update_version(body.version)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     return await get_update_status(force=False)
+
+
+@system_router.get("/update-preflight")
+async def system_last_update_preflight(
+    user: AuthenticatedUser = Depends(require_permissions("admin")),
+) -> dict:
+    """Return the latest admin-only handoff receipt, if one exists."""
+    from ditaknet.core.update_preflight import get_last_update_preflight
+
+    return {"receipt": await get_last_update_preflight()}
+
+
+@system_router.post("/update-preflight")
+async def system_prepare_update(
+    body: UpdatePreflightRequest,
+    request: Request,
+    user: AuthenticatedUser = Depends(require_permissions("admin")),
+) -> dict:
+    """Validate metadata/compatibility and create a mandatory recovery point.
+
+    The endpoint never starts Docker or TrueNAS operations. It returns an
+    auditable operator handoff only after the final backup artifact validates.
+    """
+    from ditaknet.core.update_preflight import UpdatePreflightError, prepare_update
+
+    try:
+        return await prepare_update(
+            target_version=body.target_version,
+            confirmation=body.confirmation,
+            actor=user.username,
+            ip_address=request.client.host if request.client else "",
+        )
+    except UpdatePreflightError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "backup_unavailable", "message": str(exc)},
+        ) from exc
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "backup_validation_failed", "message": str(exc)},
+        ) from exc
 
 
 @system_router.get("/info")
@@ -184,7 +247,9 @@ async def system_backup(
     except Exception:
         payload = {}
     try:
-        backup = create_backup(payload.get("filename") if isinstance(payload, dict) else None)
+        backup = create_backup(
+            payload.get("filename") if isinstance(payload, dict) else None
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except FileNotFoundError as exc:
@@ -207,7 +272,9 @@ async def system_backup(
 async def get_maintenance(
     user: AuthenticatedUser = Depends(require_permissions("read")),
 ) -> dict:
-    return {"maintenance_mode": await db.get_maintenance_mode(settings.maintenance_mode)}
+    return {
+        "maintenance_mode": await db.get_maintenance_mode(settings.maintenance_mode)
+    }
 
 
 @router.post("/maintenance")
@@ -251,7 +318,9 @@ async def audit_logs(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     safe_limit = min(max(limit, 1), 1000)
     safe_offset = max(offset, 0)
-    return {"audit_logs": await db.list_audit_logs(limit=safe_limit, offset=safe_offset)}
+    return {
+        "audit_logs": await db.list_audit_logs(limit=safe_limit, offset=safe_offset)
+    }
 
 
 class FactoryResetRequest(BaseModel):

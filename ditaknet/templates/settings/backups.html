@@ -16,7 +16,6 @@
     <div class="d-flex flex-wrap gap-2 mb-3">
       <button type="button" class="btn btn-primary btn-sm" id="btn-create-backup"><i class="bi bi-archive me-1"></i>{{ t('create_backup') }}</button>
       <button type="button" class="btn btn-outline-primary btn-sm" id="btn-upload-backup"><i class="bi bi-upload me-1"></i>{{ t('upload_backup') }}</button>
-      <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-restore-backup"><i class="bi bi-arrow-counterclockwise me-1"></i>{{ t('restore_backup') }}</button>
       <input type="file" id="backup-upload-input" accept=".zip,.sqlite3,.db,.sqlite" class="d-none">
     </div>
 
@@ -57,33 +56,13 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <p class="small text-muted">{{ t('backup_before_restore') }}</p>
+        <div class="alert alert-warning small">{{ t('backups.offline_restore_notice') }}</div>
         <div id="restore-validation" class="mb-3 small"></div>
-        <div class="mb-3">
-          <label class="form-label">{{ t('restore_mode') }}</label>
-          <select class="form-select" id="restore-mode">
-            <option value="full_restore">{{ t('full_restore') }}</option>
-            <option value="full_restore_reset_admin">{{ t('full_restore_reset_admin') }}</option>
-            <option value="data_only">{{ t('data_only_restore') }}</option>
-          </select>
-        </div>
-        <div id="restore-admin-fields" class="d-none">
-          <div class="mb-2">
-            <label class="form-label">{{ t('reset_admin_login') }}</label>
-            <input type="text" class="form-control" id="restore-admin-user" autocomplete="username">
-          </div>
-          <div class="mb-2">
-            <input type="password" class="form-control" id="restore-admin-pass" autocomplete="new-password">
-          </div>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" id="restore-confirm">
-          <label class="form-check-label" for="restore-confirm">{{ t('backups.confirm_restore') }}</label>
-        </div>
+        <p class="small mb-2">{{ t('backups.offline_restore_command') }}</p>
+        <pre class="bg-body-tertiary border rounded p-3 small text-wrap" id="restore-command"></pre>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ t('settings.action.cancel') }}</button>
-        <button type="button" class="btn btn-danger" id="restore-submit-btn">{{ t('restore_backup') }}</button>
       </div>
     </div>
   </div>
@@ -92,11 +71,10 @@
 <script type="application/json" id="backups-config">{{ {"i18n": {
   "no_backups": t('settings.data.no_backups'),
   "validate_ok": t('validate_backup'),
-  "restore_ok": t('backups.restore_started'),
   "delete_confirm": t('backups.delete_confirm')
 }} | tojson }}</script>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/backups.js?v=20260706a"></script>
+<script src="/static/js/backups.js?v=20260722offline1"></script>
 {% endblock %}

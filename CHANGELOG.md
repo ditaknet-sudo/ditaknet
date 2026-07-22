@@ -10,6 +10,15 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Made `VERSION` the canonical source version while keeping the root
+  `update-manifest.json` as a schema-v1 legacy record for the published `2.0.1`
+  amd64 artifact.
+- Upgraded backup archives to format 2 with per-member SHA-256 checks, final
+  archive validation, SQLite integrity/foreign-key checks, and operation context
+  for pre-update and pre-migration recovery points.
+- Replaced in-process and setup-time database restore with an offline-only,
+  one-shot maintenance CLI. Settings now validates the recovery point and shows
+  the command but never replaces the database while the web process is alive.
 - Changed fresh repository Compose installs from checkout-relative bind mounts
   to Docker-managed named volumes. Existing deployments must preserve all four
   legacy bind sources through `DITAKNET_*_SOURCE` before using the new Compose
@@ -17,6 +26,24 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Made official update verification fail closed by default across network,
+  signature, channel, cache-policy, digest, and replay failures, without an
+  unsigned GitHub Releases fallback.
+- Prevented future-schema databases and unsafe application downgrades from
+  mutating persistent state by enforcing schema, minimum-reader, last-writer
+  SemVer, and migration-fingerprint guards before migration.
+- Rejected `image_only` from signed schema-v2 compatibility and managed
+  preflight; rollback policy is limited to `state_restore_required` or
+  `unsupported` because writer-version guards make tag-only rollback unsafe.
+- Prevented restore races with requests, schedulers, or plugins by holding an
+  exclusive mounted database-directory lock for the complete web-process
+  lifetime and requiring the offline CLI to acquire the same lock before
+  replacement. Legacy/pre-lock images still require an explicit operator stop.
+- Bounded backup uploads and ZIP validation by compressed/uncompressed size,
+  member count and per-member size, compression ratio, safe unique paths, and
+  streaming checksums; blocking web validation now runs on a worker thread.
+- Removed unsafe dynamic HTML from the updates UI and restricted release links
+  to expected HTTPS destinations.
 - Made fresh Docker installs writable as non-root by default through
   Docker-managed volumes and a capability-scoped ownership initializer that
   never receives operator bind paths.
@@ -46,6 +73,27 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Added strict schema-v2 `stable` and `beta` update manifests with
+  channel-scoped Ed25519 key rotation, exact GHCR index and
+  `linux/amd64`/`linux/arm64` digest binding, signed compatibility contracts,
+  and monotonic per-channel replay protection.
+- Added an admin-only, exact `UPDATE X.Y.Z` preflight that force-refreshes
+  trusted metadata, creates and validates a target-bound recovery backup, and
+  returns a revalidated two-hour receipt containing external Docker/TrueNAS and
+  rollback instructions. DitakNet never performs the redeploy itself.
+- Added stopped-container restore with exact `RESTORE <filename>` and approved
+  SHA-256 confirmation, a validated/fsynced pre-offline database snapshot, and
+  an external JSON receipt. The stopped current DB is checkpointed with WAL
+  `TRUNCATE`, sidecars are cleared, current/staged files are validated and
+  fsynced, and one final `os.replace` plus directory fsync provides the
+  crash-atomic swap. The maintenance image does not initialize or restamp the
+  restored database before the previous exact image starts.
+- Added database pre-migration backups and deep-health evidence for application
+  version, database schema/minimum reader, and migration fingerprint state.
+- Extended the tag-triggered release workflow with protected channel signing,
+  digest-bound signed metadata, verified OCI provenance/SBOM attestations,
+  same-digest-only metadata repair, safe GitHub Release asset publication, and
+  selected channel-feed promotion as the final step.
 - Added independently built and smoke-tested `linux/amd64` and `linux/arm64`
   images, with exact platform-index validation, restart persistence probes,
   deep health/version checks, and per-architecture SPDX SBOMs.

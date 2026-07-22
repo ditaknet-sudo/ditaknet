@@ -53,6 +53,7 @@ from ditaknet.api.v1.system import system_router
 from ditaknet.config import settings
 from ditaknet.core.alert_engine import AlertEngine
 from ditaknet.core.licensing import license_service
+from ditaknet.core.process_lock import acquire_runtime_lock
 from ditaknet.core.runtime_settings import get_telegram_config
 from ditaknet.core.scheduler import Scheduler
 from ditaknet.core.state_engine import StateEngine
@@ -93,6 +94,21 @@ system_router.include_router(license_router)
 
 
 @asynccontextmanager
+async def _database_runtime_ownership():
+    """Own the database directory until every runtime writer has stopped."""
+
+    runtime_lock = acquire_runtime_lock(settings.db_path.parent)
+    try:
+        await db.init_db(str(settings.db_path))
+        yield
+    finally:
+        try:
+            await db.close_db()
+        finally:
+            runtime_lock.release()
+
+
+@asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan: validate environment, wire engines, start scheduler.
 
@@ -115,91 +131,97 @@ async def lifespan(app: FastAPI):
 
     log_startup_summary()
 
-    await db.init_db(str(settings.db_path))
-    interrupted_scans = await db.mark_interrupted_discovery_scans()
-    if interrupted_scans:
-        logger.warning(
-            "Marked {} interrupted discovery scan(s) as failed",
-            interrupted_scans,
+    async with _database_runtime_ownership():
+        interrupted_scans = await db.mark_interrupted_discovery_scans()
+        if interrupted_scans:
+            logger.warning(
+                "Marked {} interrupted discovery scan(s) as failed",
+                interrupted_scans,
+            )
+        await license_service.ensure_default_license()
+
+        state_engine = StateEngine()
+        alert_engine = AlertEngine()
+        scheduler = Scheduler(state_engine=state_engine, alert_engine=alert_engine)
+
+        alert_engine.register_notifier(ConsoleNotifier())
+        tg_token, tg_chat = await get_telegram_config()
+        if tg_token and tg_chat:
+            alert_engine.register_notifier(
+                TelegramNotifier(bot_token=tg_token, chat_id=tg_chat)
+            )
+            logger.info("Telegram notifications enabled")
+        elif settings.telegram_enabled:
+            alert_engine.register_notifier(TelegramNotifier())
+            logger.info("Telegram notifications enabled")
+        else:
+            logger.info(
+                "Telegram not configured — console notification fallback active"
+            )
+
+        plugin_manager = PluginManager()
+        app_context = {
+            "app": app,
+            "state_engine": state_engine,
+            "alert_engine": alert_engine,
+            "scheduler": scheduler,
+            "settings": settings,
+        }
+        await plugin_manager.load_all(app_context)
+
+        set_engines(
+            scheduler=scheduler,
+            state_engine=state_engine,
+            alert_engine=alert_engine,
         )
-    await license_service.ensure_default_license()
 
-    state_engine = StateEngine()
-    alert_engine = AlertEngine()
-    scheduler = Scheduler(state_engine=state_engine, alert_engine=alert_engine)
+        if settings.scheduler_enabled:
+            try:
+                await scheduler.start()
+            except Exception as exc:
+                logger.error("Scheduler failed to start: {}", exc)
+                if settings.is_production:
+                    raise
+                logger.warning("Continuing without scheduler in non-production mode")
+        else:
+            logger.warning("Scheduler disabled via SCHEDULER_ENABLED=false")
 
-    alert_engine.register_notifier(ConsoleNotifier())
-    tg_token, tg_chat = await get_telegram_config()
-    if tg_token and tg_chat:
-        alert_engine.register_notifier(TelegramNotifier(bot_token=tg_token, chat_id=tg_chat))
-        logger.info("Telegram notifications enabled")
-    elif settings.telegram_enabled:
-        alert_engine.register_notifier(TelegramNotifier())
-        logger.info("Telegram notifications enabled")
-    else:
-        logger.info("Telegram not configured — console notification fallback active")
+        from ditaknet.discovery.auto_import import auto_import_all_pending
+        from ditaknet.resilience import create_background_task
 
-    plugin_manager = PluginManager()
-    app_context = {
-        "app": app,
-        "state_engine": state_engine,
-        "alert_engine": alert_engine,
-        "scheduler": scheduler,
-        "settings": settings,
-    }
-    await plugin_manager.load_all(app_context)
+        async def _startup_auto_import() -> None:
+            try:
+                active_scheduler = scheduler if settings.scheduler_enabled else None
+                await auto_import_all_pending(scheduler=active_scheduler)
+            except Exception as exc:
+                logger.warning("Startup auto-import skipped: {}", exc)
 
-    set_engines(
-        scheduler=scheduler,
-        state_engine=state_engine,
-        alert_engine=alert_engine,
-    )
+        create_background_task(
+            _startup_auto_import(), name="discovery_startup_auto_import"
+        )
 
-    if settings.scheduler_enabled:
         try:
-            await scheduler.start()
+            from ditaknet.core.updates import start_update_checker
+
+            start_update_checker()
         except Exception as exc:
-            logger.error("Scheduler failed to start: {}", exc)
-            if settings.is_production:
-                raise
-            logger.warning("Continuing without scheduler in non-production mode")
-    else:
-        logger.warning("Scheduler disabled via SCHEDULER_ENABLED=false")
+            logger.warning("Update checker startup skipped: {}", exc)
 
-    from ditaknet.discovery.auto_import import auto_import_all_pending
-    from ditaknet.resilience import create_background_task
-
-    async def _startup_auto_import() -> None:
+        logger.info("{} ready", settings.app_name)
         try:
-            active_scheduler = scheduler if settings.scheduler_enabled else None
-            await auto_import_all_pending(scheduler=active_scheduler)
-        except Exception as exc:
-            logger.warning("Startup auto-import skipped: {}", exc)
+            yield
+        finally:
+            logger.info("Shutting down…")
+            try:
+                from ditaknet.core.updates import stop_update_checker
 
-    create_background_task(_startup_auto_import(), name="discovery_startup_auto_import")
-
-    try:
-        from ditaknet.core.updates import start_update_checker
-
-        start_update_checker()
-    except Exception as exc:
-        logger.warning("Update checker startup skipped: {}", exc)
-
-    logger.info("{} ready", settings.app_name)
-    yield
-
-    logger.info("Shutting down…")
-    try:
-        from ditaknet.core.updates import stop_update_checker
-
-        await stop_update_checker()
-    except Exception:
-        pass
-    if settings.scheduler_enabled:
-        await scheduler.stop()
-    await plugin_manager.unload_all()
-    await db.close_db()
-    logger.info("Shutdown complete")
+                await stop_update_checker()
+            except Exception:
+                pass
+            if settings.scheduler_enabled:
+                await scheduler.stop()
+            await plugin_manager.unload_all()
+            logger.info("Shutdown complete")
 
 
 app = FastAPI(
@@ -314,6 +336,7 @@ _SETUP_EXEMPT = (
     "/login",
     "/logout",
 )
+
 
 @app.middleware("http")
 async def setup_gate_middleware(request, call_next):

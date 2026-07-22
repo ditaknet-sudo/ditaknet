@@ -14,7 +14,7 @@ from ditaknet.web.routes import render_template
 
 router = APIRouter(include_in_schema=False, dependencies=[Depends(verify_web_csrf)])
 
-UPDATES_ASSET_BUILD = "20260712upd"
+UPDATES_ASSET_BUILD = "20260722upd4"
 
 
 @router.get("/settings/updates", response_class=HTMLResponse)
@@ -26,7 +26,9 @@ async def settings_updates_page(
     update_status = await get_update_status()
     lang = request.session.get("lang", "en")
     ghcr = settings.ghcr_image.strip() or update_status.get("ghcr_image") or ""
-    github_repo = settings.github_repository.strip() or meta.get("github_repository") or "—"
+    github_repo = (
+        settings.github_repository.strip() or meta.get("github_repository") or "—"
+    )
     backup_configured = settings.backup_dir_path.exists()
     return render_template(
         request,

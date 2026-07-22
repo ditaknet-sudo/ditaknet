@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from ditaknet import database as db
@@ -92,7 +92,9 @@ async def setup_start(request: Request):
         return redirect
     step = await get_setup_step()
     if step == "language":
-        return render_template(request, "setup/index.html", _ctx(request, step="language"))
+        return render_template(
+            request, "setup/index.html", _ctx(request, step="language")
+        )
     return RedirectResponse(url=f"/setup/{step}", status_code=303)
 
 
@@ -124,7 +126,9 @@ async def setup_purpose_get(request: Request):
 
 
 @router.post("/setup/purpose")
-async def setup_purpose_post(request: Request, use_case: str = Form("home_small_office")):
+async def setup_purpose_post(
+    request: Request, use_case: str = Form("home_small_office")
+):
     if use_case in {u["id"] for u in use_cases_payload()}:
         await save_monitoring_use_case(use_case)
     await set_setup_step("admin")
@@ -169,14 +173,22 @@ async def setup_admin_post(
         return render_template(
             request,
             "setup/admin.html",
-            _ctx(request, step="admin", error=translate("setup.error.password_mismatch", lang)),
+            _ctx(
+                request,
+                step="admin",
+                error=translate("setup.error.password_mismatch", lang),
+            ),
             status_code=400,
         )
     if len(password) < 8:
         return render_template(
             request,
             "setup/admin.html",
-            _ctx(request, step="admin", error=translate("setup.error.password_short", lang)),
+            _ctx(
+                request,
+                step="admin",
+                error=translate("setup.error.password_short", lang),
+            ),
             status_code=400,
         )
     await save_admin_credentials(username.strip(), hash_password(password))
@@ -282,8 +294,12 @@ async def setup_discovery_get(request: Request):
         progress = discovery_scheduler.get_progress(int(scan_id))
         if scan:
             progress = {
-                "percent": int(scan.get("progress_percent") or progress.get("percent") or 0),
-                "scanned": int(scan.get("scanned_hosts") or progress.get("scanned") or 0),
+                "percent": int(
+                    scan.get("progress_percent") or progress.get("percent") or 0
+                ),
+                "scanned": int(
+                    scan.get("scanned_hosts") or progress.get("scanned") or 0
+                ),
                 "total": int(scan.get("total_hosts") or progress.get("total") or 0),
                 "found": int(scan.get("found_count") or progress.get("found") or 0),
                 "status": scan.get("status") or "pending",
@@ -359,9 +375,13 @@ async def setup_import_post(
 
     from ditaknet.api.discovery import ImportRequest, import_devices
 
-    user = AuthenticatedUser(username=request.session.get("user", "admin"), role="admin")
+    user = AuthenticatedUser(
+        username=request.session.get("user", "admin"), role="admin"
+    )
     if device_ids:
-        await import_devices(ImportRequest(device_ids=device_ids, create_checks=True), user)
+        await import_devices(
+            ImportRequest(device_ids=device_ids, create_checks=True), user
+        )
         await save_imported_count(len(device_ids))
     await set_setup_step("finish")
     return RedirectResponse(url="/setup/finish", status_code=303)
@@ -427,61 +447,20 @@ async def setup_restore_get(request: Request):
 
 
 @router.post("/setup/restore")
-async def setup_restore_post(
-    request: Request,
-    backup: UploadFile = File(...),
-    admin_username: str = Form(...),
-    admin_password: str = Form(...),
-    confirm: str = Form(""),
-):
+async def setup_restore_post(request: Request):
     if redirect := await _guard_setup(request):
         return redirect
     lang = request.session.get("lang", "en")
-    if confirm != "yes":
-        return render_template(
+    return render_template(
+        request,
+        "setup/restore.html",
+        _ctx(
             request,
-            "setup/restore.html",
-            _ctx(request, step="restore", error=translate("backups.confirm_restore", lang)),
-            status_code=400,
-        )
-    import tempfile
-    from pathlib import Path
-
-    from ditaknet.core.notifications_service import notify_restore_result
-    from ditaknet.core.restore import restore_from_uploaded_file
-
-    suffix = Path(backup.filename or "").suffix.lower()
-    if suffix not in {".zip", ".sqlite3", ".db", ".sqlite"}:
-        return render_template(
-            request,
-            "setup/restore.html",
-            _ctx(request, step="restore", error=translate("backups.invalid_file", lang)),
-            status_code=400,
-        )
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            dest = Path(tmp) / Path(backup.filename or "upload.zip").name
-            content = await backup.read()
-            dest.write_bytes(content)
-            await restore_from_uploaded_file(
-                dest,
-                mode="full_restore_reset_admin",
-                confirm=True,
-                new_admin_username=admin_username.strip(),
-                new_admin_password=admin_password,
-                actor="setup",
-            )
-        await notify_restore_result(success=True, filename=backup.filename or "upload")
-        request.session["user"] = admin_username.strip()
-        return RedirectResponse(url="/dashboard", status_code=303)
-    except Exception as exc:
-        await notify_restore_result(success=False, filename=backup.filename or "", detail=str(exc))
-        return render_template(
-            request,
-            "setup/restore.html",
-            _ctx(request, step="restore", error=str(exc)),
-            status_code=500,
-        )
+            step="restore",
+            error=translate("backups.offline_restore_notice", lang),
+        ),
+        status_code=409,
+    )
 
 
 @router.get("/support/license-request", response_class=HTMLResponse)

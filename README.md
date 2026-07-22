@@ -68,16 +68,77 @@ Current app version: **2.0.1**.
 
 - Pushing code to GitHub does **not** auto-update running customer servers.
 - The existing `ghcr.io/ditaknet-sudo/ditaknet:2.0.1` image is a legacy,
-  single-architecture `linux/amd64` artifact. It predates the Phase 3 non-root,
-  multi-architecture build pipeline and must not be overwritten.
-- Phase 3 prepares the next SemVer release for both `linux/amd64` and
-  `linux/arm64`. Publishing requires a new matching Git tag and an explicit
-  manual release workflow; no floating `:latest` tag is used.
-- Publish `update-manifest.json` and set `APP_UPDATE_CHECK_URL` so admins see “Update available”.
-- Customers apply updates with Docker pull / TrueNAS Update (manual; backup first).
+  single-architecture `linux/amd64` artifact. It predates the Phase 3/4
+  hardening and signed-update work and must not be overwritten. The root
+  `update-manifest.json` is its legacy schema-v1 feed, not a Phase 4 release.
+- The next release must use a new SemVer. The release workflow builds and tests
+  `linux/amd64` and `linux/arm64`, publishes an immutable exact tag, records the
+  index and child-image digests, verifies OCI provenance/SBOM attestations,
+  publishes a signed manifest with the GitHub Release, and promotes the selected
+  channel feed last.
+- Stable and beta checks use separate schema-v2 manifests signed with
+  channel-scoped Ed25519 keys. Verification is fail-closed by default and the
+  signed metadata binds the exact version to the GHCR index/platform digests,
+  source commit, release URL, compatibility policy, and monotonic channel
+  sequence.
+- Signed compatibility accepts only `state_restore_required` or `unsupported`;
+  `image_only` is rejected because an old image cannot safely consume state
+  written under the newer database writer guard, and `unsupported` blocks the
+  managed preflight.
+- The committed public-key ring is intentionally empty until the external
+  protected-environment keys/secrets and update-feed branch protection are
+  provisioned. Until then no Phase 4 update handoff can be trusted or released.
+- An administrator must complete the in-app preflight by typing exact
+  `UPDATE X.Y.Z`. DitakNet then re-fetches the signed manifest, checks
+  compatibility, creates and validates a target-bound backup, and issues a
+  revalidated two-hour receipt with Docker/TrueNAS instructions. DitakNet never
+  redeploys its own container.
+- A historical GHCR `:latest` alias may exist, but it is unsupported and the
+  current workflow never creates or moves it. Always pin an exact SemVer and
+  verify its digest.
 - Follow [`docs/UPGRADE.md`](docs/UPGRADE.md) and
   [`docs/UPDATE_AND_MIGRATION_SAFETY.md`](docs/UPDATE_AND_MIGRATION_SAFETY.md)
   before changing an installed version.
+
+### Offline-only restore
+
+DitakNet never replaces a live SQLite database. The web process holds an
+exclusive mounted database-directory lock for its complete lifetime; the
+offline maintenance command acquires that same lock and fails if a lock-aware
+DitakNet process still owns the directory. Images from before this lock existed
+cannot be detected through it, so every legacy/pre-lock container must still be
+explicitly stopped. The Settings page may upload, validate, and show the
+generated maintenance command, but it cannot perform a live restore. Setup-time
+live restore is also disabled.
+
+For a state-required rollback, keep the failed/new exact image selected until
+the recovery database has been restored:
+
+```bash
+docker compose stop ditaknet
+docker compose run --rm --no-deps --entrypoint python ditaknet \
+  -m ditaknet.offline_restore \
+  --backup BACKUP.zip \
+  --expected-sha256 APPROVED_SHA256 \
+  --confirm 'RESTORE BACKUP.zip'
+# Only after the command succeeds, select PREVIOUS and start the service.
+docker compose up -d
+```
+
+The one-shot command validates the archive/hash and saves a pre-offline-restore
+snapshot, fsyncing both its file and directory. It checkpoints the stopped
+current DB with WAL `TRUNCATE`, removes sidecars, validates/fsyncs the current
+and staged databases, and performs one final crash-atomic `os.replace` followed
+by a directory fsync. It then writes an external JSON receipt under the backup
+mount. It does not initialize or reopen the restored database through
+DitakNet's application database layer, rerun migrations, or restamp its schema/
+last-writer markers after the bounded integrity check. See the upgrade guide
+for the exact tag-change order and TrueNAS equivalent.
+
+Backup ingestion also enforces compressed/uncompressed size, member-count,
+per-member, path, checksum, and compression-ratio limits. Web validation sends
+blocking ZIP/hash/SQLite inspection to a worker thread instead of holding the
+async request loop.
 
 TrueNAS:
 

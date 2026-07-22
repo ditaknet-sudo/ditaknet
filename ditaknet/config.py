@@ -72,13 +72,19 @@ class Settings(BaseSettings):
 
     # ── Application ───────────────────────────────────────
     app_name: str = Field(default="DitakNet", validation_alias="APP_NAME")
-    app_display_name: str = Field(default="DitakNet", validation_alias="APP_DISPLAY_NAME")
+    app_display_name: str = Field(
+        default="DitakNet", validation_alias="APP_DISPLAY_NAME"
+    )
     app_brand_name: str = Field(default="DitakNet", validation_alias="APP_BRAND_NAME")
-    app_brand_name_hy: str = Field(default="ԴիտակՆեթ", validation_alias="APP_BRAND_NAME_HY")
+    app_brand_name_hy: str = Field(
+        default="ԴիտակՆեթ", validation_alias="APP_BRAND_NAME_HY"
+    )
     app_env: str = Field(default="production", validation_alias="APP_ENV")
     app_host: str = Field(default="0.0.0.0", validation_alias="APP_HOST")
     app_port: int = Field(default=5833, validation_alias="APP_PORT")
-    app_base_url: str = Field(default="http://localhost:5833", validation_alias="APP_BASE_URL")
+    app_base_url: str = Field(
+        default="http://localhost:5833", validation_alias="APP_BASE_URL"
+    )
     app_version: str = Field(default="2.0.1", validation_alias="APP_VERSION")
     build_commit: str = Field(
         default="",
@@ -88,7 +94,9 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("BUILD_DATE", "APP_BUILD_DATE"),
     )
-    image_tag: str = Field(default="", validation_alias=AliasChoices("IMAGE_TAG", "APP_IMAGE_TAG"))
+    image_tag: str = Field(
+        default="", validation_alias=AliasChoices("IMAGE_TAG", "APP_IMAGE_TAG")
+    )
     github_repository: str = Field(default="", validation_alias="GITHUB_REPOSITORY")
     ghcr_image: str = Field(default="", validation_alias="GHCR_IMAGE")
     app_build_date: str = Field(default="", validation_alias="APP_BUILD_DATE")
@@ -99,9 +107,13 @@ class Settings(BaseSettings):
     app_author_website: str = Field(default="", validation_alias="APP_AUTHOR_WEBSITE")
     app_support_email: str = Field(default="", validation_alias="APP_SUPPORT_EMAIL")
     app_support_phone: str = Field(default="", validation_alias="APP_SUPPORT_PHONE")
-    app_support_telegram: str = Field(default="", validation_alias="APP_SUPPORT_TELEGRAM")
+    app_support_telegram: str = Field(
+        default="", validation_alias="APP_SUPPORT_TELEGRAM"
+    )
     app_support_url: str = Field(default="", validation_alias="APP_SUPPORT_URL")
-    app_documentation_url: str = Field(default="", validation_alias="APP_DOCUMENTATION_URL")
+    app_documentation_url: str = Field(
+        default="", validation_alias="APP_DOCUMENTATION_URL"
+    )
 
     # Release/update metadata. Never auto-applies; notify-only.
     # Prefer DITAKNET_UPDATE_* names; APP_UPDATE_* aliases remain for compatibility.
@@ -134,12 +146,23 @@ class Settings(BaseSettings):
             "APP_UPDATE_CHECK_URL",
         ),
     )
+    app_update_stable_manifest_url: str = Field(
+        default=(
+            "https://raw.githubusercontent.com/ditaknet-sudo/ditaknet/"
+            "update-feed/stable.json"
+        ),
+        validation_alias="DITAKNET_UPDATE_STABLE_MANIFEST_URL",
+    )
+    app_update_beta_manifest_url: str = Field(
+        default=(
+            "https://raw.githubusercontent.com/ditaknet-sudo/ditaknet/"
+            "update-feed/beta.json"
+        ),
+        validation_alias="DITAKNET_UPDATE_BETA_MANIFEST_URL",
+    )
     app_update_check_url: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            "APP_UPDATE_CHECK_URL",
-            "DITAKNET_UPDATE_MANIFEST_URL",
-        ),
+        validation_alias="APP_UPDATE_CHECK_URL",
     )
     app_update_check_timeout_seconds: float = Field(
         default=8.0,
@@ -162,12 +185,24 @@ class Settings(BaseSettings):
             "APP_UPDATE_MANIFEST_SIGNING_KEY",
         ),
     )
+    app_update_signature_required: bool = Field(
+        default=True,
+        validation_alias="DITAKNET_UPDATE_SIGNATURE_REQUIRED",
+    )
+    app_update_public_keyring_path: str = Field(
+        default="",
+        validation_alias="DITAKNET_UPDATE_PUBLIC_KEYRING_PATH",
+    )
     app_latest_version: str = Field(default="", validation_alias="APP_LATEST_VERSION")
-    app_latest_image_tag: str = Field(default="", validation_alias="APP_LATEST_IMAGE_TAG")
+    app_latest_image_tag: str = Field(
+        default="", validation_alias="APP_LATEST_IMAGE_TAG"
+    )
 
     # ── Database ──────────────────────────────────────────
     database_url: str = Field(default="", validation_alias="DATABASE_URL")
-    database_path: str = Field(default="data/ditaknet.db", validation_alias="DATABASE_PATH")
+    database_path: str = Field(
+        default="data/ditaknet.db", validation_alias="DATABASE_PATH"
+    )
 
     # ── Directories ───────────────────────────────────────
     data_dir: str = Field(default="data", validation_alias="DATA_DIR")
@@ -206,9 +241,7 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60
     admin_role: str = "admin"
     cors_allowed_origins: str = Field(
-        default=(
-            "http://localhost:5833,http://127.0.0.1:5833"
-        ),
+        default=("http://localhost:5833,http://127.0.0.1:5833"),
         validation_alias=AliasChoices("CORS_ALLOWED_ORIGINS", "CORS_ORIGINS"),
     )
     trusted_proxies: str = Field(default="", validation_alias="TRUSTED_PROXIES")
@@ -223,16 +256,28 @@ class Settings(BaseSettings):
 
     # ── Data Retention ────────────────────────────────────
     retention_days: int = Field(default=30, validation_alias="RETENTION_DAYS")
-    result_retention_days: int = Field(default=0, validation_alias="RESULT_RETENTION_DAYS")
-    alert_retention_days: int = Field(default=0, validation_alias="ALERT_RETENTION_DAYS")
-    metric_retention_days: int = Field(default=0, validation_alias="METRIC_RETENTION_DAYS")
+    result_retention_days: int = Field(
+        default=0, validation_alias="RESULT_RETENTION_DAYS"
+    )
+    alert_retention_days: int = Field(
+        default=0, validation_alias="ALERT_RETENTION_DAYS"
+    )
+    metric_retention_days: int = Field(
+        default=0, validation_alias="METRIC_RETENTION_DAYS"
+    )
 
     # ── Automatic backups ───────────────────────────────
-    auto_backup_enabled: bool = Field(default=True, validation_alias="AUTO_BACKUP_ENABLED")
-    auto_backup_keep_count: int = Field(default=3, validation_alias="AUTO_BACKUP_KEEP_COUNT")
+    auto_backup_enabled: bool = Field(
+        default=True, validation_alias="AUTO_BACKUP_ENABLED"
+    )
+    auto_backup_keep_count: int = Field(
+        default=3, validation_alias="AUTO_BACKUP_KEEP_COUNT"
+    )
 
     # ── DitakNet Agent / Metrics ────────────────────────
-    agent_registration_key: str = Field(default="", validation_alias="AGENT_REGISTRATION_KEY")
+    agent_registration_key: str = Field(
+        default="", validation_alias="AGENT_REGISTRATION_KEY"
+    )
     agent_token_header: str = "X-Agent-Token"
     agent_heartbeat_timeout_seconds: int = 120
     agent_heartbeat_check_interval_seconds: int = 30
@@ -244,12 +289,16 @@ class Settings(BaseSettings):
     metric_disk_critical: float = 95.0
 
     # ── Network discovery ─────────────────────────────────
-    discovery_max_concurrent: int = Field(default=8, validation_alias="DISCOVERY_MAX_CONCURRENT")
+    discovery_max_concurrent: int = Field(
+        default=8, validation_alias="DISCOVERY_MAX_CONCURRENT"
+    )
     discovery_timeout_seconds: float = Field(
         default=2.0,
         validation_alias="DISCOVERY_TIMEOUT_SECONDS",
     )
-    discovery_batch_pause_ms: int = Field(default=50, validation_alias="DISCOVERY_BATCH_PAUSE_MS")
+    discovery_batch_pause_ms: int = Field(
+        default=50, validation_alias="DISCOVERY_BATCH_PAUSE_MS"
+    )
     discovery_enabled: bool = Field(default=True, validation_alias="DISCOVERY_ENABLED")
     discovery_auto_refresh_enabled: bool = Field(
         default=True, validation_alias="DISCOVERY_AUTO_REFRESH_ENABLED"
@@ -286,6 +335,11 @@ class Settings(BaseSettings):
 
         if self.metric_retention_days <= 0:
             object.__setattr__(self, "metric_retention_days", 30)
+
+        update_channel = self.app_update_channel.strip().lower()
+        if update_channel not in {"stable", "beta"}:
+            raise ValueError("DITAKNET_UPDATE_CHANNEL must be 'stable' or 'beta'")
+        object.__setattr__(self, "app_update_channel", update_channel)
 
         return self
 

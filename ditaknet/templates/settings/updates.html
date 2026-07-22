@@ -103,9 +103,35 @@
           </div>
           <div class="col-md-4">
             <div class="text-muted small">{{ t('backup_before_update') }}</div>
-            <div><span class="badge bg-success">{{ t('updates.enabled') }}</span></div>
+            <div id="upd-preflight-badge"><span class="badge bg-warning text-dark">{{ t('updates.preflight_required') }}</span></div>
+          </div>
+          <div class="col-md-4">
+            <div class="text-muted small">{{ t('updates.manifest_trust') }}</div>
+            <div id="upd-trust-badge"><span class="badge bg-secondary">—</span></div>
+          </div>
+          <div class="col-md-4">
+            <div class="text-muted small">{{ t('updates.image_digest') }}</div>
+            <div class="font-monospace small text-break" id="upd-image-digest">—</div>
+          </div>
+          <div class="col-md-4">
+            <div class="text-muted small">{{ t('updates.schema_revision') }}</div>
+            <div id="upd-schema-revision">—</div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-3" id="update-preflight-card">
+      <div class="card-header bg-transparent fw-bold pt-4">{{ t('updates.preflight_title') }}</div>
+      <div class="card-body">
+        <p class="small text-muted">{{ t('updates.preflight_help') }}</p>
+        <label class="form-label small" for="update-confirmation">{{ t('updates.confirmation_label') }}</label>
+        <div class="input-group input-group-sm mb-3">
+          <input type="text" class="form-control font-monospace" id="update-confirmation"
+                 autocomplete="off" spellcheck="false" placeholder="UPDATE x.y.z">
+          <button type="button" class="btn btn-warning" id="btn-update-preflight" disabled>{{ t('updates.prepare_update') }}</button>
+        </div>
+        <div class="small" id="update-preflight-result">{{ t('updates.preflight_required') }}</div>
       </div>
     </div>
 
@@ -117,25 +143,29 @@
         <div class="mb-3">
           <label class="form-label small">{{ t('docker_update_command') }} (compose)</label>
           <div class="input-group input-group-sm">
-            <textarea class="form-control font-monospace" id="docker-compose-cmd" rows="4" readonly>docker pull ghcr.io/ditaknet-sudo/ditaknet:{{ build_meta.version }}
-# set DITAKNET_VERSION={{ build_meta.version }} (exact tag, not latest)
-docker compose up -d
-curl -fsS http://127.0.0.1:5833/health</textarea>
-            <button class="btn btn-outline-secondary" type="button" data-copy-target="docker-compose-cmd">{{ t('updates.copy') }}</button>
+            <textarea class="form-control font-monospace" id="docker-compose-cmd" rows="7" readonly>{{ t('updates.preflight_required') }}</textarea>
+            <button class="btn btn-outline-secondary" type="button" data-copy-target="docker-compose-cmd" disabled>{{ t('updates.copy') }}</button>
           </div>
         </div>
         <div class="mb-3">
           <label class="form-label small">{{ t('docker_update_command') }} (pull)</label>
           <div class="input-group input-group-sm">
-            <input type="text" class="form-control font-monospace" id="docker-pull-cmd" readonly value="docker pull {{ ghcr_image }}">
-            <button class="btn btn-outline-secondary" type="button" data-copy-target="docker-pull-cmd">{{ t('updates.copy') }}</button>
+            <input type="text" class="form-control font-monospace" id="docker-pull-cmd" readonly value="{{ t('updates.preflight_required') }}">
+            <button class="btn btn-outline-secondary" type="button" data-copy-target="docker-pull-cmd" disabled>{{ t('updates.copy') }}</button>
           </div>
         </div>
         <div class="mb-3">
           <label class="form-label small">{{ t('truenas_update_notes') }}</label>
           <div class="input-group input-group-sm">
-            <input type="text" class="form-control" id="truenas-notes" readonly value="{{ t('updates.truenas_steps') }}">
-            <button class="btn btn-outline-secondary" type="button" data-copy-target="truenas-notes">{{ t('updates.copy') }}</button>
+            <textarea class="form-control" id="truenas-notes" rows="5" readonly>{{ t('updates.preflight_required') }}</textarea>
+            <button class="btn btn-outline-secondary" type="button" data-copy-target="truenas-notes" disabled>{{ t('updates.copy') }}</button>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small">{{ t('updates.rollback_command') }}</label>
+          <div class="input-group input-group-sm">
+            <textarea class="form-control font-monospace" id="rollback-cmd" rows="5" readonly>{{ t('updates.preflight_required') }}</textarea>
+            <button class="btn btn-outline-secondary" type="button" data-copy-target="rollback-cmd" disabled>{{ t('updates.copy') }}</button>
           </div>
         </div>
         <div class="d-flex flex-wrap gap-2">
@@ -156,7 +186,13 @@ curl -fsS http://127.0.0.1:5833/health</textarea>
     "release_notes": t('release_notes'),
     "notice_available": t('updates.notice_available'),
     "promotions": t('updates.promotions'),
-    "announcements": t('updates.announcements')
+    "announcements": t('updates.announcements'),
+    "trusted": t('updates.trusted'),
+    "untrusted": t('updates.untrusted'),
+    "preflight_required": t('updates.preflight_required'),
+    "preflight_ready": t('updates.preflight_ready'),
+    "preflight_failed": t('updates.preflight_failed'),
+    "backup_receipt": t('updates.backup_receipt')
   }
 } | tojson }}</script>
 {% endblock %}

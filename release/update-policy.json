@@ -1,0 +1,9 @@
+{
+  "minimum_current_version": "2.0.0",
+  "maximum_current_version": "2.0.1",
+  "requires_backup": true,
+  "allow_major_upgrade": false,
+  "target_schema_revision": 1,
+  "backup_format_version": 2,
+  "rollback_policy": "state_restore_required"
+}

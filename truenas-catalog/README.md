@@ -64,12 +64,15 @@ or start DitakNet. See [`UPSTREAM_VALIDATION.md`](UPSTREAM_VALIDATION.md).
 ## Before opening a PR to truenas/apps
 
 This directory is a pre-submission pack. The existing `2.0.1` tag is a legacy
-artifact and must not be presented as containing later Phase 3 hardening. Cut a
-new SemVer after the complete release gate passes, then update every catalog
-version pin before the upstream PR.
+amd64 artifact and must not be presented as containing later Phase 3/4
+hardening or signed-update support. The root schema-v1 manifest is legacy only.
+Cut a new SemVer after the complete release gate passes, then update every
+catalog version pin before the upstream PR.
 
 1. Publish the new exact stable image and keep the intended public package
-   **public**. Record its digest and actual architecture list.
+   **public**. Record its index digest and actual platform child digests. The
+   release must have verified OCI provenance/SBOM attestations, a channel-signed
+   schema-v2 manifest on its GitHub Release, and selected feed promotion.
 2. Fork `https://github.com/truenas/apps`.
 3. Copy `ix-dev/community/ditaknet/` into your fork under the same path.
 4. Metadata other than the icon follows the official generator shape. The pack
@@ -94,6 +97,21 @@ version pin before the upstream PR.
    - persistent mounts: data, logs, backups, plugins
    - non-root run-as default and dataset ACL: `568:568`
    - read-only application root filesystem
+   - stable/beta channel choice with signature-required metadata
+   - administrator preflight creates a validated backup and external handoff;
+     the app never redeploys itself
+   - state restore is offline-only: stop the App, run the failed/new image as a
+     one-shot maintenance container with the exact same Data/Backups mounts (or
+     recover all recorded mounted datasets from the recursive pre-update ZFS
+     snapshot), then select the previous exact image
+   - legacy/pre-lock containers require an explicit stop; signed metadata rejects
+     `image_only` and permits only `state_restore_required` or `unsupported`
+
+The committed signing keyring is intentionally empty during development. The
+first production submission also requires externally provisioned channel public
+keys, protected-environment private-key secrets, update-feed branch protection,
+and a verified new SemVer release. A historical GHCR `:latest` alias may exist,
+but it is unsupported and the current workflow never moves it.
 
 ## Quick install today (without catalog merge)
 

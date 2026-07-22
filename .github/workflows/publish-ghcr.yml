@@ -1,7 +1,8 @@
 name: DitakNet CI and GHCR release
 
-# Pull requests and main always run quality/image gates. Only an exact vX.Y.Z
-# tag, or a manual run from the default branch, may reach the publish job.
+# Pull requests and main always run quality/image gates. Only an exact stable
+# or beta SemVer tag may publish. Manual dispatch repairs metadata only for an
+# already-attested immutable image from the exact annotated release tag.
 on:
   pull_request:
     branches:
@@ -14,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Exact stable version without v prefix (for example 2.0.1)"
+        description: "Exact version without v (2.1.0 or 2.1.0-beta.1)"
         required: true
         type: string
 
@@ -31,6 +32,7 @@ permissions:
 
 env:
   IMAGE: ghcr.io/ditaknet-sudo/ditaknet
+  SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/v{0}', inputs.version) || github.ref }}
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PYTHONDONTWRITEBYTECODE: "1"
 
@@ -42,12 +44,18 @@ jobs:
     outputs:
       version: ${{ steps.release.outputs.version }}
       build_date: ${{ steps.release.outputs.build_date }}
+      published_at: ${{ steps.release.outputs.published_at }}
+      sequence: ${{ steps.release.outputs.sequence }}
+      channel: ${{ steps.release.outputs.channel }}
+      source_commit: ${{ steps.release.outputs.source_commit }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          fetch-depth: 0
           persist-credentials: false
+          ref: ${{ env.SOURCE_REF }}
 
       - name: Resolve and validate release version
         id: release
@@ -60,15 +68,16 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            VERSION="${REQUESTED_VERSION#v}"
+            VERSION="$REQUESTED_VERSION"
           elif [[ "$REF_TYPE" == "tag" ]]; then
             VERSION="${REF_NAME#v}"
           else
-            VERSION="$(python -c 'import json; print(json.load(open("update-manifest.json", encoding="utf-8"))["latest_version"])')"
+            VERSION="$(tr -d '[:space:]' < VERSION)"
           fi
+          SOURCE_COMMIT="$(git rev-parse HEAD)"
 
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid release version: $VERSION (expected exact X.Y.Z)" >&2
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[0-9]+)?$ ]]; then
+            echo "Invalid release version: $VERSION" >&2
             exit 1
           fi
           if [[ "$REF_TYPE" == "tag" && "$REF_NAME" != "v$VERSION" ]]; then
@@ -81,16 +90,50 @@ jobs:
             git fetch --force --no-tags --depth=1 origin \
               "refs/tags/v$VERSION:refs/tags/v$VERSION"
             TAG_COMMIT="$(git rev-list -n 1 "v$VERSION")"
-            if [[ "$TAG_COMMIT" != "$GITHUB_SHA" ]]; then
-              echo "v$VERSION resolves to $TAG_COMMIT, not workflow SHA $GITHUB_SHA" >&2
+            if [[ "$TAG_COMMIT" != "$SOURCE_COMMIT" ]]; then
+              echo "v$VERSION resolves to $TAG_COMMIT, not checked-out source $SOURCE_COMMIT" >&2
+              exit 1
+            fi
+          fi
+
+          if [[ "$REF_TYPE" == "tag" || "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            git fetch --force origin \
+              "refs/tags/v$VERSION:refs/tags/v$VERSION"
+            git fetch --force --no-tags origin main:refs/remotes/origin/main
+            if ! git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main; then
+              echo "Release commit must be reachable from origin/main." >&2
+              exit 1
+            fi
+            if ! git rev-list --first-parent origin/main | grep -Fxq "$SOURCE_COMMIT"; then
+              echo "Release tag must point to the default branch's first-parent history." >&2
+              exit 1
+            fi
+            if [[ "$(git cat-file -t "refs/tags/v$VERSION")" != "tag" ]]; then
+              echo "Release tag v$VERSION must be annotated (lightweight tags are refused)." >&2
               exit 1
             fi
           fi
 
           python scripts/ci_validate_release.py --expected "$VERSION"
-          BUILD_DATE="$(git show -s --format=%cI "$GITHUB_SHA")"
+          BUILD_DATE="$(git show -s --format=%cI "$SOURCE_COMMIT")"
+          COMMIT_EPOCH="$(git show -s --format=%ct "$SOURCE_COMMIT")"
+          PUBLISHED_AT="$(date --utc --date="@$COMMIT_EPOCH" '+%Y-%m-%dT%H:%M:%SZ')"
+          SEQUENCE="$(git rev-list --count "$SOURCE_COMMIT")"
+          if [[ ! "$SEQUENCE" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Could not derive a positive monotonic release sequence." >&2
+            exit 1
+          fi
+          if [[ "$VERSION" == *-* ]]; then
+            CHANNEL=beta
+          else
+            CHANNEL=stable
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build_date=$BUILD_DATE" >> "$GITHUB_OUTPUT"
+          echo "published_at=$PUBLISHED_AT" >> "$GITHUB_OUTPUT"
+          echo "sequence=$SEQUENCE" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "source_commit=$SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python 3.11
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -162,7 +205,7 @@ jobs:
       - name: Compile Python sources
         run: >-
           python -m compileall -q ditaknet app
-          scripts/ci_validate_release.py scripts/lock_dependencies.py
+          scripts/ci_validate_release.py scripts/lock_dependencies.py scripts/release_manifest.py
           scripts/validate_truenas.py scripts/render_truenas_catalog.py
 
       - name: Run test suite
@@ -223,6 +266,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ env.SOURCE_REF }}
 
       - name: Set up QEMU for arm64 runtime smoke testing
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
@@ -249,13 +293,13 @@ jobs:
           build-args: |
             APP_VERSION=${{ needs.quality.outputs.version }}
             IMAGE_TAG=${{ needs.quality.outputs.version }}
-            BUILD_COMMIT=${{ github.sha }}
+            BUILD_COMMIT=${{ needs.quality.outputs.source_commit }}
             BUILD_DATE=${{ needs.quality.outputs.build_date }}
           labels: |
             org.opencontainers.image.title=DitakNet
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ needs.quality.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ needs.quality.outputs.source_commit }}
             org.opencontainers.image.created=${{ needs.quality.outputs.build_date }}
           cache-from: type=gha,scope=image-amd64
           cache-to: type=gha,mode=max,scope=image-amd64
@@ -274,13 +318,13 @@ jobs:
           build-args: |
             APP_VERSION=${{ needs.quality.outputs.version }}
             IMAGE_TAG=${{ needs.quality.outputs.version }}
-            BUILD_COMMIT=${{ github.sha }}
+            BUILD_COMMIT=${{ needs.quality.outputs.source_commit }}
             BUILD_DATE=${{ needs.quality.outputs.build_date }}
           labels: |
             org.opencontainers.image.title=DitakNet
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ needs.quality.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ needs.quality.outputs.source_commit }}
             org.opencontainers.image.created=${{ needs.quality.outputs.build_date }}
           cache-from: type=gha,scope=image-arm64
           cache-to: type=gha,mode=max,scope=image-arm64
@@ -289,6 +333,7 @@ jobs:
         shell: bash
         env:
           RELEASE_VERSION: ${{ needs.quality.outputs.version }}
+          SOURCE_COMMIT: ${{ needs.quality.outputs.source_commit }}
         run: |
           set -euo pipefail
           RUN_SCOPE="ditaknet-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
@@ -393,7 +438,7 @@ jobs:
             local image="ditaknet:ci-${arch}"
             local root="${RUNNER_TEMP}/ditaknet-smoke-${arch}"
             local volume_prefix="${RUN_SCOPE}-${arch}"
-            local marker="${GITHUB_SHA}-${arch}"
+            local marker="${SOURCE_COMMIT}-${arch}"
 
             mkdir -p "$root"
             for path in data logs backups plugins; do
@@ -621,7 +666,7 @@ jobs:
             ${{ runner.temp }}/ditaknet-image-arm64.spdx.json
           if-no-files-found: error
           overwrite: true
-          retention-days: 1
+          retention-days: 14
 
   publish:
     name: Publish immutable multi-arch GHCR release
@@ -639,12 +684,59 @@ jobs:
       packages: write
       attestations: write
       id-token: write
+    environment:
+      name: ${{ needs.quality.outputs.channel }}-release
+    outputs:
+      digest: ${{ steps.finalize.outputs.digest }}
+      amd64_digest: ${{ steps.push.outputs.amd64_digest }}
+      arm64_digest: ${{ steps.push.outputs.arm64_digest }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: Set up Python 3.11 for signed release metadata
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install hash-locked release metadata dependencies
+        run: >-
+          python -m pip install
+          --require-hashes
+          --requirement requirements.txt
+
+      - name: Verify protected channel signing key before registry mutation
+        shell: bash
+        env:
+          RELEASE_CHANNEL: ${{ needs.quality.outputs.channel }}
+          UPDATE_PRIVATE_KEY: ${{ needs.quality.outputs.channel == 'stable' && secrets.UPDATE_STABLE_ED25519_PRIVATE_KEY_B64 || secrets.UPDATE_BETA_ED25519_PRIVATE_KEY_B64 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$UPDATE_PRIVATE_KEY" ]]; then
+            echo "Protected $RELEASE_CHANNEL release signing key is not provisioned." >&2
+            exit 1
+          fi
+          SIGNING_KEY_ID="$RELEASE_CHANNEL-release-v1"
+          PUBLIC_KEY="$(python scripts/release_manifest.py public-key \
+            --private-key-env UPDATE_PRIVATE_KEY)"
+          python - "$RELEASE_CHANNEL" "$SIGNING_KEY_ID" "$PUBLIC_KEY" <<'PY'
+          import json
+          import sys
+
+          channel, key_id, actual = sys.argv[1:]
+          keyring = json.load(open("ditaknet/core/update_signing_public_keys.json", encoding="utf-8"))
+          expected = (keyring.get(channel) or {}).get(key_id)
+          if not expected:
+              raise SystemExit(f"public key {channel}/{key_id} is not provisioned in the app keyring")
+          if actual != expected:
+              raise SystemExit(f"protected private key does not match {channel}/{key_id}")
+          PY
 
       - name: Download the smoke-tested release image
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -672,10 +764,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Refuse to overwrite the immutable public release tag
+      - name: Inspect an existing immutable public release tag
+        id: existing
         shell: bash
         env:
           RELEASE_VERSION: ${{ needs.quality.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           set +e
@@ -684,8 +778,16 @@ jobs:
           inspect_status=$?
           set -e
           if [[ "$inspect_status" == "0" ]]; then
-            echo "$IMAGE:$RELEASE_VERSION already exists; release tags are immutable." >&2
-            exit 1
+            EXISTING_DIGEST="$(printf '%s\n' "$inspect_output" | \
+              awk '$1 == "Digest:" { print $2; exit }')"
+            if [[ ! "$EXISTING_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "Existing release tag did not expose a valid digest." >&2
+              exit 1
+            fi
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "digest=$EXISTING_DIGEST" >> "$GITHUB_OUTPUT"
+            echo "$IMAGE:$RELEASE_VERSION already exists at $EXISTING_DIGEST; repair mode will verify it."
+            exit 0
           fi
           if ! grep -Eqi '(manifest unknown|name unknown|not found)' \
             <<<"$inspect_output"; then
@@ -693,11 +795,19 @@ jobs:
             echo "$inspect_output" >&2
             exit 1
           fi
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "Manual dispatch is metadata repair only; rerun the original tag workflow to publish a missing image." >&2
+            exit 1
+          fi
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+          echo "digest=" >> "$GITHUB_OUTPUT"
 
       - name: Publish exact per-architecture images and manifest list
         id: push
         env:
           RELEASE_VERSION: ${{ needs.quality.outputs.version }}
+          EXISTING_TAG: ${{ steps.existing.outputs.exists }}
+          EXISTING_DIGEST: ${{ steps.existing.outputs.digest }}
         run: |
           set -euo pipefail
           push_arch() {
@@ -720,42 +830,77 @@ jobs:
             printf '%s' "$digest"
           }
 
-          AMD64_DIGEST="$(push_arch amd64)"
-          ARM64_DIGEST="$(push_arch arm64)"
-          STAGING_TARGET="$IMAGE:$RELEASE_VERSION-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-index"
-          docker buildx imagetools create \
-            --tag "$STAGING_TARGET" \
-            "$IMAGE@$AMD64_DIGEST" \
-            "$IMAGE@$ARM64_DIGEST"
+          if [[ "$EXISTING_TAG" == "true" ]]; then
+            # Repair metadata from the immutable published index. Do not rely
+            # on a later apt-based Docker rebuild being byte-reproducible and
+            # do not mutate registry state during repair.
+            INDEX_DIGEST="$EXISTING_DIGEST"
+            INDEX_TARGET="$IMAGE@$INDEX_DIGEST"
+            EXPECTED_AMD64=""
+            EXPECTED_ARM64=""
+          else
+            AMD64_DIGEST="$(push_arch amd64)"
+            ARM64_DIGEST="$(push_arch arm64)"
+            INDEX_TARGET="$IMAGE:$RELEASE_VERSION-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-index"
+            docker buildx imagetools create \
+              --tag "$INDEX_TARGET" \
+              "$IMAGE@$AMD64_DIGEST" \
+              "$IMAGE@$ARM64_DIGEST"
 
-          INSPECT_OUTPUT="$(docker buildx imagetools inspect "$STAGING_TARGET")"
-          echo "$INSPECT_OUTPUT"
-          INDEX_DIGEST="$(printf '%s\n' "$INSPECT_OUTPUT" | \
-            awk '$1 == "Digest:" { print $2; exit }')"
-          if [[ ! "$INDEX_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "GHCR did not return a valid staging index digest." >&2
-            exit 1
+            INSPECT_OUTPUT="$(docker buildx imagetools inspect "$INDEX_TARGET")"
+            echo "$INSPECT_OUTPUT"
+            INDEX_DIGEST="$(printf '%s\n' "$INSPECT_OUTPUT" | \
+              awk '$1 == "Digest:" { print $2; exit }')"
+            if [[ ! "$INDEX_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "GHCR did not return a valid staging index digest." >&2
+              exit 1
+            fi
+            EXPECTED_AMD64="$AMD64_DIGEST"
+            EXPECTED_ARM64="$ARM64_DIGEST"
           fi
 
-          docker buildx imagetools inspect --raw "$STAGING_TARGET" > "$RUNNER_TEMP/index.json"
-          python - "$RUNNER_TEMP/index.json" <<'PY'
+          docker buildx imagetools inspect --raw "$INDEX_TARGET" > "$RUNNER_TEMP/index.json"
+          python - "$RUNNER_TEMP/index.json" "$EXPECTED_AMD64" "$EXPECTED_ARM64" \
+            "$RUNNER_TEMP/child-digests.txt" <<'PY'
           import json
+          import re
           import sys
+          from pathlib import Path
 
           index = json.load(open(sys.argv[1], encoding="utf-8"))
+          manifests = index.get("manifests")
+          assert isinstance(manifests, list) and len(manifests) == 2, manifests
           platforms = {
               (item.get("platform") or {}).get("os", "") + "/" +
-              (item.get("platform") or {}).get("architecture", "")
-              for item in index.get("manifests", [])
+              (item.get("platform") or {}).get("architecture", ""): item.get("digest")
+              for item in manifests
           }
-          assert platforms == {"linux/amd64", "linux/arm64"}, platforms
+          assert set(platforms) == {"linux/amd64", "linux/arm64"}, platforms
+          assert all(
+              isinstance(digest, str)
+              and re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+              for digest in platforms.values()
+          ), platforms
+          expected_amd64, expected_arm64 = sys.argv[2:4]
+          if expected_amd64:
+              assert platforms["linux/amd64"] == expected_amd64, platforms
+          if expected_arm64:
+              assert platforms["linux/arm64"] == expected_arm64, platforms
+          Path(sys.argv[4]).write_text(
+              platforms["linux/amd64"] + "\n" + platforms["linux/arm64"] + "\n",
+              encoding="utf-8",
+          )
           PY
+          mapfile -t CHILD_DIGESTS < "$RUNNER_TEMP/child-digests.txt"
+          AMD64_DIGEST="${CHILD_DIGESTS[0]}"
+          ARM64_DIGEST="${CHILD_DIGESTS[1]}"
           echo "amd64_digest=$AMD64_DIGEST" >> "$GITHUB_OUTPUT"
           echo "arm64_digest=$ARM64_DIGEST" >> "$GITHUB_OUTPUT"
           echo "index_digest=$INDEX_DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Attest build provenance for the validated staging index
         id: provenance
+        if: steps.existing.outputs.exists != 'true'
         uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-name: ${{ env.IMAGE }}
@@ -765,6 +910,7 @@ jobs:
 
       - name: Attest the smoke-tested amd64 image SBOM
         id: sbom-amd64
+        if: steps.existing.outputs.exists != 'true'
         uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-name: ${{ env.IMAGE }}
@@ -775,6 +921,7 @@ jobs:
 
       - name: Attest the smoke-tested arm64 image SBOM
         id: sbom-arm64
+        if: steps.existing.outputs.exists != 'true'
         uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-name: ${{ env.IMAGE }}
@@ -782,6 +929,86 @@ jobs:
           sbom-path: ${{ runner.temp }}/ditaknet-release/ditaknet-image-arm64.spdx.json
           push-to-registry: true
           create-storage-record: false
+
+      - name: Verify signed provenance before making the release tag visible
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INDEX_DIGEST: ${{ steps.push.outputs.index_digest }}
+          AMD64_DIGEST: ${{ steps.push.outputs.amd64_digest }}
+          ARM64_DIGEST: ${{ steps.push.outputs.arm64_digest }}
+          SOURCE_COMMIT: ${{ needs.quality.outputs.source_commit }}
+        run: |
+          set -euo pipefail
+          gh attestation verify "oci://$IMAGE@$INDEX_DIGEST" \
+            --repo "$GITHUB_REPOSITORY" \
+            --bundle-from-oci \
+            --deny-self-hosted-runners \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish-ghcr.yml" \
+            --source-digest "$SOURCE_COMMIT"
+          for child_digest in "$AMD64_DIGEST" "$ARM64_DIGEST"; do
+            gh attestation verify "oci://$IMAGE@$child_digest" \
+              --repo "$GITHUB_REPOSITORY" \
+              --bundle-from-oci \
+              --deny-self-hosted-runners \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish-ghcr.yml" \
+              --source-digest "$SOURCE_COMMIT" \
+              --predicate-type "https://spdx.dev/Document/v2.3"
+          done
+
+      - name: Build, sign and verify digest-bound update metadata
+        id: metadata
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.quality.outputs.version }}
+          RELEASE_CHANNEL: ${{ needs.quality.outputs.channel }}
+          PUBLISHED_AT: ${{ needs.quality.outputs.published_at }}
+          RELEASE_SEQUENCE: ${{ needs.quality.outputs.sequence }}
+          IMAGE_DIGEST: ${{ steps.push.outputs.index_digest }}
+          AMD64_DIGEST: ${{ steps.push.outputs.amd64_digest }}
+          ARM64_DIGEST: ${{ steps.push.outputs.arm64_digest }}
+          UPDATE_PRIVATE_KEY: ${{ needs.quality.outputs.channel == 'stable' && secrets.UPDATE_STABLE_ED25519_PRIVATE_KEY_B64 || secrets.UPDATE_BETA_ED25519_PRIVATE_KEY_B64 }}
+        run: |
+          set -euo pipefail
+          OUTPUT_ROOT="$RUNNER_TEMP/ditaknet-release-metadata"
+          mkdir -p "$OUTPUT_ROOT"
+          SIGNING_KEY_ID="$RELEASE_CHANNEL-release-v1"
+
+          python scripts/release_manifest.py build \
+            --version "$RELEASE_VERSION" \
+            --channel "$RELEASE_CHANNEL" \
+            --image-digest "$IMAGE_DIGEST" \
+            --amd64-digest "$AMD64_DIGEST" \
+            --arm64-digest "$ARM64_DIGEST" \
+            --source-commit "${{ needs.quality.outputs.source_commit }}" \
+            --published-at "$PUBLISHED_AT" \
+            --sequence "$RELEASE_SEQUENCE" \
+            --policy release/update-policy.json \
+            --output "$OUTPUT_ROOT/update-manifest.unsigned.json"
+          python scripts/release_manifest.py sign \
+            --input "$OUTPUT_ROOT/update-manifest.unsigned.json" \
+            --output "$OUTPUT_ROOT/update-manifest.json" \
+            --key-id "$SIGNING_KEY_ID" \
+            --private-key-env UPDATE_PRIVATE_KEY
+          python scripts/release_manifest.py verify \
+            --input "$OUTPUT_ROOT/update-manifest.json" \
+            --keyring ditaknet/core/update_signing_public_keys.json \
+            --channel "$RELEASE_CHANNEL"
+
+          python - "$OUTPUT_ROOT/update-manifest.json" \
+            "$IMAGE_DIGEST" "$AMD64_DIGEST" "$ARM64_DIGEST" <<'PY'
+          import json
+          import sys
+
+          manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert manifest["image_digest"] == sys.argv[2]
+          assert manifest["platform_digests"] == {
+              "linux/amd64": sys.argv[3],
+              "linux/arm64": sys.argv[4],
+          }
+          PY
+          rm -f "$OUTPUT_ROOT/update-manifest.unsigned.json"
+          echo "path=$OUTPUT_ROOT/update-manifest.json" >> "$GITHUB_OUTPUT"
 
       # The immutable SemVer tag is deliberately the final registry mutation.
       # Architecture pushes, index validation, vulnerability gates and signed
@@ -792,12 +1019,44 @@ jobs:
         env:
           RELEASE_VERSION: ${{ needs.quality.outputs.version }}
           INDEX_DIGEST: ${{ steps.push.outputs.index_digest }}
+          EXISTING_TAG: ${{ steps.existing.outputs.exists }}
+          EXISTING_DIGEST: ${{ steps.existing.outputs.digest }}
         run: |
           set -euo pipefail
           TARGET="$IMAGE:$RELEASE_VERSION"
-          docker buildx imagetools create \
-            --tag "$TARGET" \
-            "$IMAGE@$INDEX_DIGEST"
+          if [[ "$EXISTING_TAG" == "true" ]]; then
+            if [[ "$EXISTING_DIGEST" != "$INDEX_DIGEST" ]]; then
+              echo "Existing immutable tag changed after inspection." >&2
+              exit 1
+            fi
+            echo "Verified existing immutable tag; continuing metadata repair."
+          else
+            # Close the normal external-writer window as far as the registry
+            # API permits: recheck immediately before the final mutation and
+            # never overwrite a conflicting exact tag.
+            set +e
+            concurrent_output="$(docker buildx imagetools inspect "$TARGET" 2>&1)"
+            concurrent_status=$?
+            set -e
+            if [[ "$concurrent_status" == "0" ]]; then
+              concurrent_digest="$(printf '%s\n' "$concurrent_output" | \
+                awk '$1 == "Digest:" { print $2; exit }')"
+              if [[ "$concurrent_digest" != "$INDEX_DIGEST" ]]; then
+                echo "Exact release tag appeared concurrently with a different digest." >&2
+                exit 1
+              fi
+              echo "Exact release tag appeared concurrently with the expected digest."
+            elif grep -Eqi '(manifest unknown|name unknown|not found)' \
+              <<<"$concurrent_output"; then
+              docker buildx imagetools create \
+                --tag "$TARGET" \
+                "$IMAGE@$INDEX_DIGEST"
+            else
+              echo "Could not safely recheck the exact release tag:" >&2
+              echo "$concurrent_output" >&2
+              exit 1
+            fi
+          fi
           INSPECT_OUTPUT="$(docker buildx imagetools inspect "$TARGET")"
           echo "$INSPECT_OUTPUT"
           PUBLISHED_DIGEST="$(printf '%s\n' "$INSPECT_OUTPUT" | \
@@ -807,6 +1066,16 @@ jobs:
             exit 1
           fi
           echo "digest=$PUBLISHED_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Store signed metadata and release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ditaknet-release-metadata-${{ github.run_id }}
+          path: |
+            ${{ steps.metadata.outputs.path }}
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
 
       - name: Write release summary
         env:
@@ -827,3 +1096,270 @@ jobs:
             echo "- SBOM: per-architecture SPDX JSON, signed and attached by digest"
             echo "- Floating tags were not modified"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  release-metadata:
+    name: Publish verified GitHub Release metadata
+    needs:
+      - quality
+      - publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install hash-locked metadata verifier
+        run: >-
+          python -m pip install
+          --require-hashes
+          --requirement requirements.txt
+
+      - name: Download signed release metadata
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ditaknet-release-metadata-${{ github.run_id }}
+          path: ${{ runner.temp }}/release-assets
+
+      - name: Reverify release metadata against the finalized image
+        shell: bash
+        env:
+          RELEASE_CHANNEL: ${{ needs.quality.outputs.channel }}
+          RELEASE_VERSION: ${{ needs.quality.outputs.version }}
+          IMAGE_DIGEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+          MANIFEST="$RUNNER_TEMP/release-assets/update-manifest.json"
+          python scripts/release_manifest.py verify \
+            --input "$MANIFEST" \
+            --keyring ditaknet/core/update_signing_public_keys.json \
+            --channel "$RELEASE_CHANNEL"
+          python - "$MANIFEST" "$RELEASE_VERSION" "$IMAGE_DIGEST" <<'PY'
+          import json
+          import sys
+
+          manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert manifest["version"] == sys.argv[2]
+          assert manifest["image_digest"] == sys.argv[3]
+          PY
+
+      - name: Create or safely resume the GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_CHANNEL: ${{ needs.quality.outputs.channel }}
+          RELEASE_VERSION: ${{ needs.quality.outputs.version }}
+          IMAGE_DIGEST: ${{ needs.publish.outputs.digest }}
+          AMD64_DIGEST: ${{ needs.publish.outputs.amd64_digest }}
+          ARM64_DIGEST: ${{ needs.publish.outputs.arm64_digest }}
+        run: |
+          set -euo pipefail
+          TAG="v$RELEASE_VERSION"
+          ASSET_ROOT="$RUNNER_TEMP/release-assets"
+          NOTES="$RUNNER_TEMP/release-notes.md"
+          python - "$ASSET_ROOT/update-manifest.json" "$NOTES" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          compatibility = manifest["compatibility"]
+          version = manifest["version"]
+          lines = [
+              f"# DitakNet {version}",
+              "",
+              f"- Channel: `{manifest['channel']}`",
+              f"- Image: `{manifest['docker_image']}`",
+              f"- Multi-arch digest: `{manifest['image_digest']}`",
+              f"- linux/amd64: `{manifest['platform_digests']['linux/amd64']}`",
+              f"- linux/arm64: `{manifest['platform_digests']['linux/arm64']}`",
+              f"- Direct-upgrade source range: `{compatibility['minimum_current_version']}` through `{compatibility['maximum_current_version']}`",
+              f"- Target database schema revision: `{compatibility['target_schema_revision']}`",
+              f"- Required backup format: `{compatibility['backup_format_version']}`",
+              f"- Rollback policy: `{compatibility['rollback_policy']}`",
+              "",
+              "Run DitakNet's backup-first admin preflight before redeploying.",
+              "For state_restore_required releases, reverting only the image is unsafe; restore the validated pre-update state.",
+              f"Known changes and issues: https://github.com/ditaknet-sudo/ditaknet/blob/v{version}/CHANGELOG.md",
+          ]
+          Path(sys.argv[2]).write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            create_args=("$TAG" --verify-tag --draft --title "DitakNet $RELEASE_VERSION" --notes-file "$NOTES")
+            if [[ "$RELEASE_CHANNEL" == "beta" ]]; then
+              create_args+=(--prerelease)
+            fi
+            gh release create "${create_args[@]}"
+          fi
+
+          upload_or_verify() {
+            local path="$1"
+            local name
+            name="$(basename "$path")"
+            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq "$name"; then
+              local downloaded="$RUNNER_TEMP/existing-$name"
+              gh release download "$TAG" --pattern "$name" --output "$downloaded"
+              cmp --silent "$path" "$downloaded" || {
+                echo "Existing release asset $name differs; refusing overwrite." >&2
+                exit 1
+              }
+            else
+              gh release upload "$TAG" "$path"
+            fi
+          }
+
+          upload_or_verify "$ASSET_ROOT/update-manifest.json"
+
+          if [[ "$RELEASE_CHANNEL" == "beta" ]]; then
+            gh release edit "$TAG" --draft=false --prerelease=true
+          else
+            gh release edit "$TAG" --draft=false --prerelease=false --latest
+          fi
+
+  promote-update-feed:
+    name: Promote signed channel feed last
+    needs:
+      - quality
+      - publish
+      - release-metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository with feed-push credentials
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: Download the signed manifest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ditaknet-release-metadata-${{ github.run_id }}
+          path: ${{ runner.temp }}/release-assets
+
+      - name: Atomically promote the selected signed channel
+        shell: bash
+        env:
+          RELEASE_CHANNEL: ${{ needs.quality.outputs.channel }}
+          RELEASE_VERSION: ${{ needs.quality.outputs.version }}
+          EXPECTED_DIGEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+          FEED_ROOT="$RUNNER_TEMP/ditaknet-update-feed"
+          SOURCE="$RUNNER_TEMP/release-assets/update-manifest.json"
+          if git ls-remote --exit-code --heads origin update-feed >/dev/null 2>&1; then
+            git fetch --force origin update-feed:refs/remotes/origin/update-feed
+            git worktree add --detach "$FEED_ROOT" origin/update-feed
+          else
+            git worktree add --detach "$FEED_ROOT" "${{ needs.quality.outputs.source_commit }}"
+            git -C "$FEED_ROOT" switch --orphan update-feed
+            git -C "$FEED_ROOT" rm -rf --ignore-unmatch .
+          fi
+
+          TARGET="$FEED_ROOT/$RELEASE_CHANNEL.json"
+          python - "$SOURCE" "$TARGET" "$RELEASE_CHANNEL" "$RELEASE_VERSION" "$EXPECTED_DIGEST" <<'PY'
+          import json
+          import re
+          import shutil
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1])
+          target = Path(sys.argv[2])
+          channel, version, digest = sys.argv[3:]
+          incoming = json.loads(source.read_text(encoding="utf-8"))
+          assert incoming["channel"] == channel
+          assert incoming["version"] == version
+          assert incoming["image_digest"] == digest
+          if target.is_file():
+              current = json.loads(target.read_text(encoding="utf-8"))
+              assert current.get("channel") == channel
+              incoming_sequence = int(incoming["sequence"])
+              current_sequence = int(current.get("sequence") or 0)
+              if incoming_sequence < current_sequence:
+                  raise SystemExit("channel sequence downgrade refused")
+              if incoming_sequence == current_sequence:
+                  if source.read_bytes() != target.read_bytes():
+                      raise SystemExit(
+                          "equal channel sequence reused for different metadata"
+                      )
+                  raise SystemExit(0)
+
+              version_pattern = re.compile(
+                  r"^(0|[1-9][0-9]*)\."
+                  r"(0|[1-9][0-9]*)\."
+                  r"(0|[1-9][0-9]*)"
+                  r"(?:-(beta|rc)\.(0|[1-9][0-9]*))?$"
+              )
+
+              def version_key(value):
+                  match = version_pattern.fullmatch(str(value or ""))
+                  if match is None:
+                      raise SystemExit(f"invalid channel version: {value!r}")
+                  major, minor, patch = map(int, match.group(1, 2, 3))
+                  kind, number = match.group(4), match.group(5)
+                  if kind is None:
+                      return major, minor, patch, 1, 0, 0
+                  return (
+                      major,
+                      minor,
+                      patch,
+                      0,
+                      {"beta": 0, "rc": 1}[kind],
+                      int(number),
+                  )
+
+              if version_key(incoming["version"]) <= version_key(
+                  current.get("version")
+              ):
+                  raise SystemExit(
+                      "higher channel sequence must publish a newer version"
+                  )
+          shutil.copyfile(source, target)
+          PY
+
+          git -C "$FEED_ROOT" config user.name "github-actions[bot]"
+          git -C "$FEED_ROOT" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$FEED_ROOT" add "$RELEASE_CHANNEL.json"
+          if git -C "$FEED_ROOT" diff --cached --quiet; then
+            echo "Signed $RELEASE_CHANNEL feed already matches; nothing to promote."
+          else
+            git -C "$FEED_ROOT" commit -m "Promote $RELEASE_CHANNEL feed to $RELEASE_VERSION [skip ci]"
+            git -C "$FEED_ROOT" push origin HEAD:update-feed
+          fi
+
+          EXPECTED_SHA="$(sha256sum "$SOURCE" | awk '{print $1}')"
+          FEED_URL="https://raw.githubusercontent.com/$GITHUB_REPOSITORY/update-feed/$RELEASE_CHANNEL.json"
+          verified=0
+          for attempt in $(seq 1 12); do
+            curl --fail --silent --show-error \
+              --max-time 20 \
+              "$FEED_URL?release=$RELEASE_VERSION&attempt=$attempt" \
+              --output "$RUNNER_TEMP/promoted.json" || true
+            if [[ -f "$RUNNER_TEMP/promoted.json" ]] && \
+               [[ "$(sha256sum "$RUNNER_TEMP/promoted.json" | awk '{print $1}')" == "$EXPECTED_SHA" ]]; then
+              verified=1
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$verified" != "1" ]]; then
+            echo "Promoted channel feed could not be verified byte-for-byte." >&2
+            exit 1
+          fi

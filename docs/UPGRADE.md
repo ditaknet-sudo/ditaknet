@@ -1,17 +1,26 @@
 # DitakNet upgrade and rollback guide
 
 DitakNet does not auto-update a running container. An administrator explicitly
-selects an exact GHCR SemVer, preserves a recovery point, redeploys, and verifies
-the application.
+selects a trusted signed release, completes the backup-first preflight, then
+redeploys the exact GHCR SemVer from Docker or TrueNAS and verifies the
+application.
 
 ## Rules
 
 - Use `ghcr.io/ditaknet-sudo/ditaknet:X.Y.Z`; never use `latest`.
-- Read the release notes and confirm the exact tag exists before maintenance.
-- Create both a DitakNet backup and a storage-level snapshot before upgrade.
+- Require a fresh channel-scoped Ed25519 schema-v2 manifest and verify the
+  target index digest. The root schema-v1 `update-manifest.json` and legacy
+  `2.0.1` artifact are not sufficient for the managed handoff.
+- Read the release notes and signed compatibility contract before maintenance.
+- Complete the admin preflight and create a storage-level snapshot before
+  redeploying. The preflight itself creates and validates a format-v2 DitakNet
+  backup bound to the target version, digest, schema, channel, and sequence.
 - Keep the previous exact image locally until the validation period ends.
 - Do not run two DitakNet containers against the same writable SQLite dataset.
 - Never restore a database while either old or new container is writing to it.
+- Live restore is disabled in both Settings and first-run setup. Settings may
+  validate a backup and generate the offline command, but database replacement
+  always happens in a stopped, one-shot maintenance container.
 
 ## Pre-upgrade record
 
@@ -28,6 +37,8 @@ Logs dataset/path:
 Backups dataset/path:
 Plugins dataset/path:
 Pre-upgrade backup filename:
+Pre-upgrade backup SHA-256:
+Preflight receipt ID and expiry:
 Pre-upgrade snapshot name:
 ```
 
@@ -37,11 +48,24 @@ backup when the pool itself is part of the risk being mitigated.
 
 ## Upgrade sequence
 
-1. **Check the target release**
+1. **Check the target release and complete the admin preflight**
 
-   Confirm the GitHub release, release notes, supported upgrade path, GHCR tag,
-   and successful release workflow. Pull the exact target without changing the
-   running container:
+   In **Settings → Updates**, refresh the selected `stable` or `beta` channel.
+   Confirm the manifest is trusted, its schema is version 2, the exact GHCR tag
+   and index/platform digests are shown, and the compatibility/rollback policy
+   permits the current version. Type exactly `UPDATE TARGET` as an administrator.
+
+   DitakNet force-fetches the signed metadata, checks the monotonic channel
+   sequence and compatibility contract, creates and immediately revalidates a
+   format-v2 `pre_update` backup, and stores an auditable handoff receipt. The
+   receipt remains usable for at most two hours and is revalidated when opened.
+   If it expires, the backup is missing/changed, or the release identity changes,
+   run the preflight again. Do not construct substitute commands from untrusted
+   UI text.
+
+   Confirm the GitHub Release contains the byte-identical signed manifest and
+   the release workflow succeeded. Use the exact image/digest commands returned
+   by the receipt. A typical independent pull/inspection is:
 
    ```bash
    docker pull ghcr.io/ditaknet-sudo/ditaknet:TARGET
@@ -50,8 +74,10 @@ backup when the pool itself is part of the risk being mitigated.
 
 2. **Create recovery points**
 
-   Create and validate a DitakNet backup from the UI. Then create the recursive
-   TrueNAS snapshot or equivalent filesystem snapshot. Record both names.
+   Record the preflight-created, validated backup name and SHA-256. Then create
+   the recursive TrueNAS snapshot or equivalent filesystem snapshot and record
+   both recovery points. Do not replace the target-bound preflight backup with
+   an older generic archive.
 
 3. **Record baseline behavior**
 
@@ -64,6 +90,9 @@ backup when the pool itself is part of the risk being mitigated.
    old database.
 
 4. **Select the target exact version**
+
+   Follow the still-valid receipt's external handoff instructions. DitakNet does
+   not call Docker, edit Compose, or control the TrueNAS Apps service.
 
    For the repository Compose deployment, set `DITAKNET_VERSION=TARGET` in the
    local uncommitted `.env` file. Preserve any existing `DITAKNET_*_SOURCE`
@@ -116,6 +145,13 @@ backup when the pool itself is part of the risk being mitigated.
    - a new backup can be created and validated;
    - the container still runs as UID/GID `568:568` with only `NET_RAW`;
    - the original four persistent mounts are still attached.
+
+   Startup also enforces the database's last-writer SemVer, schema revision,
+   minimum reader, and migration fingerprint. A future-schema database or an
+   unsafe application downgrade is refused rather than modified. When a version
+   transition can migrate state, DitakNet creates and validates a format-v2
+   `pre_migration` backup before applying migrations; `/health/deep` reports the
+   resulting compatibility markers.
 
 6. **Retain recovery assets**
 
@@ -174,33 +210,100 @@ stopped:
 For a genuinely new installation, leave the four variables unset and use the
 named-volume defaults. Do not copy a live SQLite file from a legacy bind path
 into a named volume; use a stopped, mutually consistent dataset copy or the
-validated backup/restore process.
+validated offline restore process.
+
+## Restore safety boundary
+
+The DitakNet web process owns an exclusive mounted database-directory lock for
+its entire lifetime, including scheduler and plugin activity. The offline
+restore CLI acquires the same lock non-blockingly. If a current DitakNet web
+process or another maintenance command still owns that mounted database
+directory, the restore fails closed before replacing the database. Images from
+before this lock was introduced cannot advertise their activity through it, so
+explicitly stopping every legacy/pre-lock container is still mandatory. The
+one-shot command must mount the same `/app/data` and `/app/backups` as the
+stopped deployment.
+
+The Settings backup page can upload, validate, and display the generated
+offline command. It has no live restore submit action. First-run setup cannot
+restore a database in-process either; stage the approved backup in the backup
+mount and perform the same stopped-container maintenance before starting the
+application.
+
+Before replacement, the CLI saves and validates the current database as
+`ditaknet-pre-offline-restore-*.sqlite3`, then fsyncs both that file and its
+backup directory. It checkpoints the stopped current database with
+`wal_checkpoint(TRUNCATE)`, removes its stale/empty WAL/SHM sidecars, validates
+and fsyncs the self-contained current database, and fsyncs its directory. The
+recovered database is staged, validated, hashed, and fsynced before one final
+crash-atomic `os.replace`; the database directory is fsynced afterward. Thus a
+crash before the replace leaves the checkpointed current database authoritative,
+while a crash after it leaves the staged recovery database authoritative.
+
+After replacement the CLI writes an `offline-restore-receipt-*.json` file
+outside SQLite in the backup mount. The receipt records the approved archive
+hash, restored database hash, backup format/app version, and the pre-offline
+snapshot name/hash. The CLI performs bounded query-only integrity validation
+but deliberately does not reopen the database through DitakNet's application
+database layer, run migrations, or restamp last-writer/schema markers. The
+previous exact image therefore sees the recovery point's original compatibility
+markers when it starts.
+
+Backup upload and ZIP validation are resource-bounded: the compressed upload is
+capped at 2 GiB; ZIPs are limited to 256 members, 8 GiB total uncompressed data,
+a 200:1 compression ratio for large members, and member-specific size caps.
+Duplicate names, unsafe paths, excess/corrupt members, checksum mismatches, and
+invalid SQLite content are rejected. Web upload/validation performs blocking
+archive and SQLite inspection on a worker thread so the event loop is not held
+by a large archive.
 
 ## Rollback decision
 
-Use a **container-only rollback** only when release notes state that the schema
-and persistent state remain compatible with the previous release. Otherwise,
-restore or clone the pre-upgrade storage snapshot together with the previous
-image. Starting old code against state already migrated by newer code can cause
-secondary failures.
+Schema-v2 signed metadata accepts only `state_restore_required` or
+`unsupported`. `image_only` is rejected because the database writer-version
+guard cannot safely prove that newer persistent state is readable by old code.
+Managed preflight therefore never authorizes a tag-only rollback.
 
-### Container-only rollback
+For `state_restore_required`, restore or clone the pre-upgrade storage snapshot
+or validated preflight backup while the App is stopped. When using the backup
+CLI, keep the failed/new image selected until restore succeeds and only then
+select the previous exact image. An `unsupported` policy blocks managed
+preflight; keep the service stopped and follow the release-specific recovery
+runbook. Starting old code directly against state written by newer code is
+unsafe and is also blocked when the last-writer/schema contract proves the
+downgrade invalid.
 
-1. Stop the new container and retain its logs.
-2. Set `DITAKNET_VERSION=PREVIOUS` or restore the previous exact Custom App
-   image tag.
-3. Redeploy without changing any mount path.
-4. Verify health, login, inventory, checks, logs, and backup creation.
-5. Repeat the `/health/deep` assertion with `EXPECTED_VERSION=PREVIOUS`.
+### State rollback from a DitakNet backup — offline only
+
+Do not select or start the previous image first. Keep the failed/new exact image
+selected so its maintenance code performs the restore, and use the filename,
+SHA-256, and command that were validated before the failed upgrade:
 
 ```bash
-docker compose down
-# Set DITAKNET_VERSION=PREVIOUS in the local environment file.
-docker compose up -d
-curl -fsS http://HOST:PORT/health
+docker compose stop ditaknet
+docker compose run --rm --no-deps --entrypoint python ditaknet \
+  -m ditaknet.offline_restore \
+  --backup BACKUP.zip \
+  --expected-sha256 APPROVED_SHA256 \
+  --confirm 'RESTORE BACKUP.zip'
 ```
 
-### State rollback or recovery clone
+The confirmation must exactly match the backup basename. Verify the command's
+JSON result reports `"ok": true`, preserve the named pre-offline snapshot and
+external receipt, and do not continue on any lock/hash/validation failure. Only
+after the offline restore succeeds:
+
+1. Set `DITAKNET_VERSION=PREVIOUS` or select the previous exact TrueNAS image.
+2. Run `docker compose up -d` or start the TrueNAS App.
+3. Verify `/health/deep` reports the previous version and passing schema/
+   migration markers, then verify login, data, monitoring, logs, and a new
+   backup.
+
+If preparation or staging fails before the final `os.replace`, the checkpointed
+current database remains in place and authoritative. Do not change the image
+tag until the failure is understood.
+
+### Dataset snapshot rollback or recovery clone
 
 A snapshot rollback replaces newer writes and is destructive. Prefer cloning
 the pre-upgrade snapshot to recovery datasets first when capacity allows.
@@ -214,10 +317,14 @@ the pre-upgrade snapshot to recovery datasets first when capacity allows.
 6. Verify health and application data before making the recovery deployment
    authoritative.
 
-If using an application backup instead of a dataset snapshot, start the
-compatible application with a fresh isolated data path and use the supported
-restore flow. Never copy a live SQLite database file or mix a restored `data`
-dataset with mismatched plugin state without validation.
+On TrueNAS, the mandatory receipt order is: stop the App; recover all recorded
+mounted datasets from the recursive pre-update ZFS snapshot clone/rollback, or
+run the documented failed/new-image one-shot container with the exact same Data
+and Backups mounts; only after recovery succeeds select the previous exact tag;
+then start and verify `/health/deep`. If the TrueNAS UI cannot reproduce the
+exact maintenance mounts, use a snapshot clone rather than inventing a partial
+container command. Never copy a live SQLite database file or mix a restored
+`data` dataset with mismatched plugin state without validation.
 
 ## UID/GID 568 migration during upgrade
 
@@ -230,17 +337,28 @@ and application version upgrade in one maintenance action. Establish the
 ## Update checks
 
 Outbound release checks are optional and send no hostname, IP, license, user,
-or monitoring telemetry. Configuration:
+or monitoring telemetry. The official stable and beta URLs are selected by the
+channel; do not point production clients at `main/update-manifest.json`.
+Configuration:
 
 ```text
 DITAKNET_UPDATE_CHECK_ENABLED=true
 DITAKNET_UPDATE_CHANNEL=stable
 DITAKNET_UPDATE_CHECK_INTERVAL_HOURS=6
-DITAKNET_UPDATE_MANIFEST_URL=https://raw.githubusercontent.com/ditaknet-sudo/ditaknet/main/update-manifest.json
+DITAKNET_UPDATE_SIGNATURE_REQUIRED=true
 ```
 
-When a manifest signing key is configured, manifest/signature failure is
-fail-closed and the unsigned GitHub Releases fallback is disabled. Without a
-signing key, a failed manifest request may use the public GitHub Releases API to
-discover the latest SemVer. Update checks notify only; they never redeploy the
-container.
+The default feeds are
+`https://raw.githubusercontent.com/ditaknet-sudo/ditaknet/update-feed/stable.json`
+and `.../beta.json`. A custom `DITAKNET_UPDATE_MANIFEST_URL` is an explicit
+operator override, but it does not relax signature, channel, digest, or
+anti-replay validation.
+
+Signature verification is required and fail-closed by default: unknown key,
+wrong channel, invalid signature, stale/replayed sequence, invalid digest, or
+network failure cannot fall back to unsigned GitHub release metadata or unlock
+the preflight. The source tree currently ships an empty public-key ring until
+the first Phase 4 release keys and protected environments are externally
+provisioned, so a managed handoff is intentionally unavailable before then.
+Update checks notify and prepare auditable external instructions only; they
+never redeploy the container.

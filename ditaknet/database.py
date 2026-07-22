@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
@@ -27,7 +28,12 @@ import aiosqlite
 from loguru import logger
 
 from ditaknet.config import settings
-from ditaknet.core.rbac import ALL_PERMISSIONS, DEFAULT_ROLES, normalize_role, permissions_for_role
+from ditaknet.core.rbac import (
+    ALL_PERMISSIONS,
+    DEFAULT_ROLES,
+    normalize_role,
+    permissions_for_role,
+)
 
 # Single shared connection — sufficient for SQLite WAL + async FastAPI workload.
 _db: Optional[aiosqlite.Connection] = None
@@ -593,6 +599,137 @@ MIGRATION_SQL = [
     "ALTER TABLE discovery_scans ADD COLUMN request_id TEXT NOT NULL DEFAULT ''",
 ]
 
+# Compatibility markers are persisted only after every additive migration has
+# completed. A newer reader can raise these values when it introduces an
+# incompatible schema; an older Phase-4+ image then fails before mutating data.
+DATABASE_SCHEMA_REVISION = 1
+MINIMUM_READER_SCHEMA_REVISION = 1
+_SCHEMA_REVISION_KEY = "database_schema_revision"
+_MINIMUM_READER_REVISION_KEY = "database_minimum_reader_revision"
+_LAST_WRITER_VERSION_KEY = "database_last_writer_version"
+_MIGRATION_FINGERPRINT_KEY = "database_migration_fingerprint"
+
+
+def migration_fingerprint() -> str:
+    identifiers = sorted(_migration_id(sql) for sql in MIGRATION_SQL)
+    return hashlib.sha256("\n".join(identifiers).encode("utf-8")).hexdigest()
+
+
+def _strict_version_key(value: str | None) -> tuple[Any, ...] | None:
+    match = re.fullmatch(
+        r"v?(0|[1-9][0-9]*)\."
+        r"(0|[1-9][0-9]*)\."
+        r"(0|[1-9][0-9]*)"
+        r"(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
+        r"(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?",
+        str(value or "").strip(),
+    )
+    if match is None:
+        return None
+    core: tuple[Any, ...] = tuple(int(match.group(index)) for index in range(1, 4))
+    prerelease = match.group(4)
+    if prerelease is None:
+        return (*core, 1, ())
+    parts: list[tuple[int, int | str]] = []
+    for part in prerelease.split("."):
+        parts.append((0, int(part)) if part.isdigit() else (1, part))
+    return (*core, 0, tuple(parts))
+
+
+async def _read_database_compatibility(
+    connection: aiosqlite.Connection,
+) -> dict[str, Any]:
+    tables = await connection.execute_fetchall(
+        "SELECT name FROM sqlite_master WHERE type = 'table'"
+    )
+    table_names = {str(row[0]) for row in tables}
+    result: dict[str, Any] = {"tables": table_names}
+    if "app_settings" not in table_names:
+        return result
+    rows = await connection.execute_fetchall(
+        "SELECT key, value FROM app_settings WHERE key IN (?, ?, ?, ?)",
+        (
+            _SCHEMA_REVISION_KEY,
+            _MINIMUM_READER_REVISION_KEY,
+            _LAST_WRITER_VERSION_KEY,
+            _MIGRATION_FINGERPRINT_KEY,
+        ),
+    )
+    result.update({str(row[0]): str(row[1] or "") for row in rows})
+    return result
+
+
+def _validate_database_compatibility(markers: dict[str, Any]) -> None:
+    try:
+        schema_revision = int(markers.get(_SCHEMA_REVISION_KEY) or 1)
+        minimum_reader = int(markers.get(_MINIMUM_READER_REVISION_KEY) or 1)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("Database compatibility markers are invalid") from exc
+    if schema_revision > DATABASE_SCHEMA_REVISION:
+        raise RuntimeError(
+            "Database schema was written by a newer DitakNet version; "
+            "restore the matching pre-update backup before rollback"
+        )
+    if minimum_reader > DATABASE_SCHEMA_REVISION:
+        raise RuntimeError(
+            "This DitakNet image is older than the database minimum reader revision"
+        )
+
+    last_writer = str(markers.get(_LAST_WRITER_VERSION_KEY) or "").strip()
+    current_version = _strict_version_key(settings.app_version)
+    writer_version = _strict_version_key(last_writer)
+    if current_version and writer_version and current_version < writer_version:
+        raise RuntimeError(
+            "Application downgrade detected; restore the validated pre-update "
+            "backup before starting the older image"
+        )
+
+
+async def _create_pre_migration_recovery_point(markers: dict[str, Any]) -> None:
+    tables = markers.get("tables") or set()
+    if not {"hosts", "services", "app_settings"}.issubset(tables):
+        return
+    last_writer = str(markers.get(_LAST_WRITER_VERSION_KEY) or "").strip()
+    stored_fingerprint = str(markers.get(_MIGRATION_FINGERPRINT_KEY) or "").strip()
+    if (
+        last_writer == settings.app_version
+        and stored_fingerprint == migration_fingerprint()
+    ):
+        return
+
+    from ditaknet.core.backup import create_full_backup
+
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+    await create_full_backup(
+        f"ditaknet-pre-migration-{timestamp}.zip",
+        backup_origin="pre_migration",
+        operation_context={
+            "source_version": last_writer or "legacy-unversioned",
+            "target_version": settings.app_version,
+            "target_schema_revision": DATABASE_SCHEMA_REVISION,
+            "rollback_policy": "state_restore_required",
+        },
+    )
+
+
+async def _write_database_compatibility(
+    connection: aiosqlite.Connection,
+) -> None:
+    now = _now()
+    values = {
+        _SCHEMA_REVISION_KEY: str(DATABASE_SCHEMA_REVISION),
+        _MINIMUM_READER_REVISION_KEY: str(MINIMUM_READER_SCHEMA_REVISION),
+        _LAST_WRITER_VERSION_KEY: settings.app_version,
+        _MIGRATION_FINGERPRINT_KEY: migration_fingerprint(),
+    }
+    for key, value in values.items():
+        await connection.execute(
+            """INSERT INTO app_settings (key, value, updated_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at""",
+            (key, value, now),
+        )
+
 
 # ─── Connection Management ────────────────────────────────
 
@@ -609,19 +746,32 @@ async def init_db(db_path: Optional[str] = None) -> aiosqlite.Connection:
     _db = await aiosqlite.connect(str(path))
     _db.row_factory = aiosqlite.Row
 
-    # Performance pragmas
-    await _db.execute("PRAGMA journal_mode=WAL")
-    await _db.execute("PRAGMA synchronous=NORMAL")
-    await _db.execute("PRAGMA foreign_keys=ON")
+    try:
+        # Read-only compatibility gate and recovery snapshot happen before any
+        # schema statement or persistent journal-mode change.
+        markers = await _read_database_compatibility(_db)
+        _validate_database_compatibility(markers)
+        await _create_pre_migration_recovery_point(markers)
 
-    # Create tables
-    await _db.executescript(SCHEMA_SQL)
-    await _run_migrations(_db)
-    from ditaknet.discovery.store import ensure_discovery_schema
+        # Performance pragmas
+        await _db.execute("PRAGMA journal_mode=WAL")
+        await _db.execute("PRAGMA synchronous=NORMAL")
+        await _db.execute("PRAGMA foreign_keys=ON")
 
-    await ensure_discovery_schema(_db)
-    await ensure_user_rbac_defaults(_db)
-    await _db.commit()
+        # Create tables
+        await _db.executescript(SCHEMA_SQL)
+        await _run_migrations(_db)
+        from ditaknet.discovery.store import ensure_discovery_schema
+
+        await ensure_discovery_schema(_db)
+        await ensure_user_rbac_defaults(_db)
+        await _write_database_compatibility(_db)
+        await _db.commit()
+    except Exception:
+        await _db.close()
+        _db = None
+        _db_path = None
+        raise
 
     logger.info("Database initialised successfully")
     return _db
@@ -684,9 +834,24 @@ CORE_TABLES = (
     "monitored_networks",
 )
 
+REQUIRED_SCHEMA_COLUMNS = {
+    "hosts": {
+        "id",
+        "address",
+        "host_type",
+        "parent_device_id",
+        "manual_classification_enabled",
+    },
+    "services": {"id", "host_id", "retry_count", "max_attempts"},
+    "users": {"id", "username", "permissions_json", "session_version"},
+    "app_settings": {"key", "value", "updated_at"},
+    "schema_migrations": {"id", "applied_at"},
+    "discovery_scans": {"id", "request_id", "diagnostics_json"},
+}
+
 
 async def schema_health() -> dict:
-    """Report whether expected SQLite tables exist (migration sanity)."""
+    """Report tables, columns, migration ledger and SQLite integrity."""
     try:
         connection = await get_db()
         rows = await connection.execute_fetchall(
@@ -694,12 +859,61 @@ async def schema_health() -> dict:
         )
         existing = {str(row[0]) for row in rows}
         missing = [name for name in CORE_TABLES if name not in existing]
+        missing_columns: dict[str, list[str]] = {}
+        for table, required_columns in REQUIRED_SCHEMA_COLUMNS.items():
+            if table not in existing:
+                missing_columns[table] = sorted(required_columns)
+                continue
+            column_rows = await connection.execute_fetchall(
+                f"PRAGMA table_info({table})"
+            )
+            columns = {str(row[1]) for row in column_rows}
+            absent = sorted(required_columns - columns)
+            if absent:
+                missing_columns[table] = absent
+
+        expected_migrations = {_migration_id(sql) for sql in MIGRATION_SQL}
+        migration_rows = await connection.execute_fetchall(
+            "SELECT id FROM schema_migrations"
+        )
+        applied_migrations = {str(row[0]) for row in migration_rows}
+        missing_migrations = sorted(expected_migrations - applied_migrations)
+
+        quick_rows = await connection.execute_fetchall("PRAGMA quick_check")
+        quick_check = [str(row[0]) for row in quick_rows]
+        foreign_key_rows = await connection.execute_fetchall("PRAGMA foreign_key_check")
+        markers = await _read_database_compatibility(connection)
+        marker_revision = int(markers.get(_SCHEMA_REVISION_KEY) or 0)
+        marker_fingerprint = str(markers.get(_MIGRATION_FINGERPRINT_KEY) or "")
+        expected_fingerprint = migration_fingerprint()
+        markers_ok = (
+            marker_revision == DATABASE_SCHEMA_REVISION
+            and marker_fingerprint == expected_fingerprint
+        )
+        ok = bool(
+            not missing
+            and not missing_columns
+            and not missing_migrations
+            and quick_check == ["ok"]
+            and not foreign_key_rows
+            and markers_ok
+        )
         return {
-            "ok": not missing,
-            "status": "pass" if not missing else "fail",
+            "ok": ok,
+            "status": "pass" if ok else "fail",
             "tables_expected": len(CORE_TABLES),
             "tables_present": len(existing),
             "missing_tables": missing,
+            "missing_columns": missing_columns,
+            "migrations_expected": len(expected_migrations),
+            "migrations_applied": len(applied_migrations & expected_migrations),
+            "missing_migrations": missing_migrations,
+            "schema_revision": marker_revision,
+            "expected_schema_revision": DATABASE_SCHEMA_REVISION,
+            "migration_fingerprint": marker_fingerprint or None,
+            "expected_migration_fingerprint": expected_fingerprint,
+            "quick_check": quick_check,
+            "foreign_key_violations": len(foreign_key_rows),
         }
     except Exception as exc:
         return {
@@ -707,6 +921,9 @@ async def schema_health() -> dict:
             "status": "fail",
             "error": type(exc).__name__,
             "missing_tables": list(CORE_TABLES),
+            "missing_columns": {},
+            "missing_migrations": [],
+            "expected_schema_revision": DATABASE_SCHEMA_REVISION,
         }
 
 
@@ -804,7 +1021,11 @@ def _clean_permissions(values: Any) -> list[str]:
     if isinstance(parsed, (list, tuple, set)):
         for item in parsed:
             permission = str(item or "").strip()
-            if permission and permission in ALL_PERMISSIONS and permission not in result:
+            if (
+                permission
+                and permission in ALL_PERMISSIONS
+                and permission not in result
+            ):
                 result.append(permission)
     return sorted(result)
 
@@ -833,7 +1054,9 @@ def _role_row_to_dict(row: aiosqlite.Row | dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-async def ensure_user_rbac_defaults(connection: aiosqlite.Connection | None = None) -> None:
+async def ensure_user_rbac_defaults(
+    connection: aiosqlite.Connection | None = None,
+) -> None:
     """Seed system roles and the first super admin without overwriting user data."""
     conn = connection or await get_db()
     now = _now()
@@ -924,7 +1147,9 @@ async def get_user_by_username(username: str) -> Optional[dict]:
 
 async def get_user_by_id(user_id: int) -> Optional[dict]:
     conn = await get_db()
-    rows = await conn.execute_fetchall("SELECT * FROM users WHERE id = ?", (int(user_id),))
+    rows = await conn.execute_fetchall(
+        "SELECT * FROM users WHERE id = ?", (int(user_id),)
+    )
     return _user_row_to_dict(rows[0]) if rows else None
 
 
@@ -1019,7 +1244,9 @@ async def update_user(user_id: int, **fields: Any) -> Optional[dict]:
     params.append(_now())
     params.append(int(user_id))
     conn = await get_db()
-    await conn.execute(f"UPDATE users SET {', '.join(assignments)} WHERE id = ?", params)
+    await conn.execute(
+        f"UPDATE users SET {', '.join(assignments)} WHERE id = ?", params
+    )
     await conn.commit()
     return await get_user_by_id(user_id)
 
@@ -1101,7 +1328,9 @@ async def record_failed_login(
 
 async def list_roles() -> list[dict]:
     conn = await get_db()
-    rows = await conn.execute_fetchall("SELECT * FROM roles ORDER BY is_system DESC, name")
+    rows = await conn.execute_fetchall(
+        "SELECT * FROM roles ORDER BY is_system DESC, name"
+    )
     return [_role_row_to_dict(row) for row in rows]
 
 
@@ -1125,7 +1354,9 @@ async def upsert_role(
 ) -> dict:
     conn = await get_db()
     now = _now()
-    normalized_code = normalize_role(code) if code in DEFAULT_ROLES else code.strip().lower()
+    normalized_code = (
+        normalize_role(code) if code in DEFAULT_ROLES else code.strip().lower()
+    )
     await conn.execute(
         """INSERT INTO roles
            (code, name, description, permissions_json, is_system, license_feature, created_at, updated_at)
@@ -1193,7 +1424,9 @@ async def create_host(
         ),
     )
     await db.commit()
-    row = await db.execute_fetchall("SELECT * FROM hosts WHERE id = ?", (cursor.lastrowid,))
+    row = await db.execute_fetchall(
+        "SELECT * FROM hosts WHERE id = ?", (cursor.lastrowid,)
+    )
     return _row_to_dict(row[0])
 
 
@@ -1270,18 +1503,33 @@ async def create_service(
             timeout_seconds, expected_status_code, enabled, retry_count,
             max_attempts, current_state, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?)""",
-        (host_id, name, check_type, target, port, interval_seconds,
-         timeout_seconds, expected_status_code, int(enabled),
-         retry_count, max_attempts, _now()),
+        (
+            host_id,
+            name,
+            check_type,
+            target,
+            port,
+            interval_seconds,
+            timeout_seconds,
+            expected_status_code,
+            int(enabled),
+            retry_count,
+            max_attempts,
+            _now(),
+        ),
     )
     await db.commit()
-    rows = await db.execute_fetchall("SELECT * FROM services WHERE id = ?", (cursor.lastrowid,))
+    rows = await db.execute_fetchall(
+        "SELECT * FROM services WHERE id = ?", (cursor.lastrowid,)
+    )
     return _row_to_dict(rows[0])
 
 
 async def get_service(service_id: int) -> Optional[dict]:
     db = await get_db()
-    rows = await db.execute_fetchall("SELECT * FROM services WHERE id = ?", (service_id,))
+    rows = await db.execute_fetchall(
+        "SELECT * FROM services WHERE id = ?", (service_id,)
+    )
     return _row_to_dict(rows[0]) if rows else None
 
 
@@ -1299,9 +1547,18 @@ async def list_services(host_id: Optional[int] = None) -> list[dict]:
 async def update_service(service_id: int, **fields) -> Optional[dict]:
     db = await get_db()
     allowed = (
-        "host_id", "name", "check_type", "target", "port", "interval_seconds",
-        "timeout_seconds", "expected_status_code", "enabled", "current_state",
-        "retry_count", "max_attempts",
+        "host_id",
+        "name",
+        "check_type",
+        "target",
+        "port",
+        "interval_seconds",
+        "timeout_seconds",
+        "expected_status_code",
+        "enabled",
+        "current_state",
+        "retry_count",
+        "max_attempts",
     )
     sets, vals = [], []
     for key in allowed:
@@ -1344,7 +1601,9 @@ async def insert_check_result(
         (service_id, status, response_time_ms, message, _now()),
     )
     await db.commit()
-    rows = await db.execute_fetchall("SELECT * FROM check_results WHERE id = ?", (cursor.lastrowid,))
+    rows = await db.execute_fetchall(
+        "SELECT * FROM check_results WHERE id = ?", (cursor.lastrowid,)
+    )
     return _row_to_dict(rows[0])
 
 
@@ -1452,7 +1711,9 @@ async def get_latest_checks_all() -> list[dict]:
 
 async def get_last_check_timestamp() -> Optional[str]:
     db = await get_db()
-    rows = await db.execute_fetchall("SELECT MAX(checked_at) AS last_check_at FROM check_results")
+    rows = await db.execute_fetchall(
+        "SELECT MAX(checked_at) AS last_check_at FROM check_results"
+    )
     return rows[0]["last_check_at"] if rows and rows[0]["last_check_at"] else None
 
 
@@ -1492,7 +1753,9 @@ async def create_alert(
         (service_id, alert_type, message, severity, _now()),
     )
     await db.commit()
-    rows = await db.execute_fetchall("SELECT * FROM alerts WHERE id = ?", (cursor.lastrowid,))
+    rows = await db.execute_fetchall(
+        "SELECT * FROM alerts WHERE id = ?", (cursor.lastrowid,)
+    )
     return _row_to_dict(rows[0])
 
 
@@ -1586,7 +1849,9 @@ async def insert_state_change(
         (service_id, old_state, new_state, reason, _now()),
     )
     await db.commit()
-    rows = await db.execute_fetchall("SELECT * FROM state_log WHERE id = ?", (cursor.lastrowid,))
+    rows = await db.execute_fetchall(
+        "SELECT * FROM state_log WHERE id = ?", (cursor.lastrowid,)
+    )
     return _row_to_dict(rows[0])
 
 
@@ -1637,7 +1902,9 @@ async def create_audit_log(
         ),
     )
     await db.commit()
-    rows = await db.execute_fetchall("SELECT * FROM audit_logs WHERE id = ?", (cursor.lastrowid,))
+    rows = await db.execute_fetchall(
+        "SELECT * FROM audit_logs WHERE id = ?", (cursor.lastrowid,)
+    )
     return _row_to_dict(rows[0])
 
 
@@ -1704,13 +1971,17 @@ async def create_system_log(
         ),
     )
     await db.commit()
-    rows = await db.execute_fetchall("SELECT * FROM system_logs WHERE id = ?", (cursor.lastrowid,))
+    rows = await db.execute_fetchall(
+        "SELECT * FROM system_logs WHERE id = ?", (cursor.lastrowid,)
+    )
     return _row_to_dict(rows[0])
 
 
 async def get_system_log(log_id: int) -> Optional[dict]:
     db = await get_db()
-    rows = await db.execute_fetchall("SELECT * FROM system_logs WHERE id = ?", (log_id,))
+    rows = await db.execute_fetchall(
+        "SELECT * FROM system_logs WHERE id = ?", (log_id,)
+    )
     return _row_to_dict(rows[0]) if rows else None
 
 
@@ -1777,7 +2048,9 @@ async def get_last_system_log(*, levels: Optional[list[str]] = None) -> Optional
     return _row_to_dict(rows[0]) if rows else None
 
 
-async def get_last_system_log_timestamp(*, levels: Optional[list[str]] = None) -> Optional[str]:
+async def get_last_system_log_timestamp(
+    *, levels: Optional[list[str]] = None
+) -> Optional[str]:
     row = await get_last_system_log(levels=levels)
     return str(row.get("created_at")) if row else None
 
@@ -1831,9 +2104,27 @@ async def set_app_setting(key: str, value: str) -> dict:
     return _row_to_dict(rows[0])
 
 
+async def set_app_settings_atomic(values: dict[str, str]) -> None:
+    """Persist related app settings in one SQLite transaction."""
+    if not values:
+        return
+    connection = await get_db()
+    now = _now()
+    await connection.executemany(
+        """INSERT INTO app_settings (key, value, updated_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE
+           SET value = excluded.value, updated_at = excluded.updated_at""",
+        [(str(key), str(value), now) for key, value in values.items()],
+    )
+    await connection.commit()
+
+
 async def get_app_setting(key: str, default: Optional[str] = None) -> Optional[str]:
     db = await get_db()
-    rows = await db.execute_fetchall("SELECT value FROM app_settings WHERE key = ?", (key,))
+    rows = await db.execute_fetchall(
+        "SELECT value FROM app_settings WHERE key = ?", (key,)
+    )
     return rows[0]["value"] if rows else default
 
 
@@ -1895,8 +2186,7 @@ async def get_dashboard_stats() -> dict:
     hosts_status = await get_hosts_status()
     hosts_up = sum(1 for h in hosts_status if h["overall_state"] == "ok")
     hosts_down = sum(
-        1 for h in hosts_status
-        if h["overall_state"] in ("warning", "critical")
+        1 for h in hosts_status if h["overall_state"] in ("warning", "critical")
     )
 
     return {
@@ -1929,11 +2219,13 @@ async def get_hosts_status() -> list[dict]:
         for s in svc_list:
             if priority.get(s["current_state"], 0) > priority.get(worst, 0):
                 worst = s["current_state"]
-        result.append({
-            "host": host_dict,
-            "services": svc_list,
-            "overall_state": worst,
-        })
+        result.append(
+            {
+                "host": host_dict,
+                "services": svc_list,
+                "overall_state": worst,
+            }
+        )
     return result
 
 
@@ -2164,7 +2456,9 @@ async def create_agent(
         (name, hostname, host_id, token_hash, status, _now()),
     )
     await db.commit()
-    rows = await db.execute_fetchall("SELECT * FROM agents WHERE id = ?", (cursor.lastrowid,))
+    rows = await db.execute_fetchall(
+        "SELECT * FROM agents WHERE id = ?", (cursor.lastrowid,)
+    )
     return _row_to_dict(rows[0])
 
 
@@ -2192,8 +2486,13 @@ async def list_agents() -> list[dict]:
 async def update_agent(agent_id: int, **fields) -> Optional[dict]:
     db = await get_db()
     allowed = (
-        "name", "hostname", "host_id", "status", "last_heartbeat_at",
-        "last_metrics_at", "enabled",
+        "name",
+        "hostname",
+        "host_id",
+        "status",
+        "last_heartbeat_at",
+        "last_metrics_at",
+        "enabled",
     )
     sets, vals = [], []
     for key in allowed:
@@ -2274,7 +2573,9 @@ async def create_agent_alert(
         ),
     )
     await db.commit()
-    rows = await db.execute_fetchall("SELECT * FROM agent_alerts WHERE id = ?", (cursor.lastrowid,))
+    rows = await db.execute_fetchall(
+        "SELECT * FROM agent_alerts WHERE id = ?", (cursor.lastrowid,)
+    )
     return _row_to_dict(rows[0])
 
 
@@ -2318,7 +2619,9 @@ async def resolve_agent_alert(alert_id: int) -> Optional[dict]:
         (_now(), alert_id),
     )
     await db.commit()
-    rows = await db.execute_fetchall("SELECT * FROM agent_alerts WHERE id = ?", (alert_id,))
+    rows = await db.execute_fetchall(
+        "SELECT * FROM agent_alerts WHERE id = ?", (alert_id,)
+    )
     return _row_to_dict(rows[0]) if rows else None
 
 
@@ -2346,9 +2649,21 @@ async def purge_old_data(
     metric_retention_days: int | None = None,
 ) -> int:
     """Delete old check results, resolved alerts, metrics, and state log rows."""
-    result_days = result_retention_days if result_retention_days is not None else settings.result_retention_days
-    alert_days = alert_retention_days if alert_retention_days is not None else settings.alert_retention_days
-    metric_days = metric_retention_days if metric_retention_days is not None else settings.metric_retention_days
+    result_days = (
+        result_retention_days
+        if result_retention_days is not None
+        else settings.result_retention_days
+    )
+    alert_days = (
+        alert_retention_days
+        if alert_retention_days is not None
+        else settings.alert_retention_days
+    )
+    metric_days = (
+        metric_retention_days
+        if metric_retention_days is not None
+        else settings.metric_retention_days
+    )
 
     total = 0
     db_conn = await get_db()
@@ -2356,20 +2671,27 @@ async def purge_old_data(
 
     if result_days > 0:
         cutoff = (now - timedelta(days=result_days)).isoformat()
-        c1 = await db_conn.execute("DELETE FROM check_results WHERE checked_at < ?", (cutoff,))
-        c3 = await db_conn.execute("DELETE FROM state_log WHERE changed_at < ?", (cutoff,))
+        c1 = await db_conn.execute(
+            "DELETE FROM check_results WHERE checked_at < ?", (cutoff,)
+        )
+        c3 = await db_conn.execute(
+            "DELETE FROM state_log WHERE changed_at < ?", (cutoff,)
+        )
         total += c1.rowcount + c3.rowcount
 
     if alert_days > 0:
         cutoff = (now - timedelta(days=alert_days)).isoformat()
         c2 = await db_conn.execute(
-            "DELETE FROM alerts WHERE resolved_at IS NOT NULL AND created_at < ?", (cutoff,)
+            "DELETE FROM alerts WHERE resolved_at IS NOT NULL AND created_at < ?",
+            (cutoff,),
         )
         total += c2.rowcount
 
     if metric_days > 0:
         cutoff = (now - timedelta(days=metric_days)).isoformat()
-        c4 = await db_conn.execute("DELETE FROM agent_metrics WHERE collected_at < ?", (cutoff,))
+        c4 = await db_conn.execute(
+            "DELETE FROM agent_metrics WHERE collected_at < ?", (cutoff,)
+        )
         total += c4.rowcount
 
     if total:
@@ -2414,7 +2736,9 @@ async def get_license_by_key_hash(license_key_hash: str) -> Optional[dict]:
     return _row_to_dict(rows[0]) if rows else None
 
 
-async def update_license_status(license_id: int, status: str, *, limits_json: str | None = None) -> None:
+async def update_license_status(
+    license_id: int, status: str, *, limits_json: str | None = None
+) -> None:
     db_conn = await get_db()
     if limits_json is not None:
         await db_conn.execute(
@@ -2469,7 +2793,9 @@ async def create_license(
 # ─── Discovery ────────────────────────────────────────────
 
 
-async def create_discovery_scan(profile: str, subnets_json: str, *, request_id: str = "") -> dict:
+async def create_discovery_scan(
+    profile: str, subnets_json: str, *, request_id: str = ""
+) -> dict:
     db_conn = await get_db()
     cursor = await db_conn.execute(
         """INSERT INTO discovery_scans
@@ -2651,7 +2977,10 @@ async def list_discovered_devices(
     monitored_subnets: list[str] | None = None,
 ) -> list[dict]:
     """List discovered devices. Without scan_id, only authorized monitored subnets are shown."""
-    from ditaknet.discovery.store import DEMO_DISCOVERY_SOURCES, filter_devices_by_monitored_subnets
+    from ditaknet.discovery.store import (
+        DEMO_DISCOVERY_SOURCES,
+        filter_devices_by_monitored_subnets,
+    )
 
     db_conn = await get_db()
     demo_clause = ""
@@ -2745,9 +3074,15 @@ async def list_pending_discovered_inventory(*, limit: int = 500) -> list[dict]:
         if not ip:
             continue
         current = by_ip.get(ip)
-        if not current or str(device.get("last_seen_at") or "") > str(current.get("last_seen_at") or ""):
+        if not current or str(device.get("last_seen_at") or "") > str(
+            current.get("last_seen_at") or ""
+        ):
             by_ip[ip] = device
-    ordered = sorted(by_ip.values(), key=lambda item: str(item.get("last_seen_at") or ""), reverse=True)
+    ordered = sorted(
+        by_ip.values(),
+        key=lambda item: str(item.get("last_seen_at") or ""),
+        reverse=True,
+    )
     return ordered[:limit]
 
 
@@ -2784,8 +3119,12 @@ def discovered_device_inventory_item(device: dict) -> dict:
         "last_heartbeat_at": None,
         "last_metrics_at": device.get("last_seen_at"),
         "scan_id": scan_id,
-        "detail_url": f"/discovery?tab=results&scan_id={scan_id}" if scan_id else "/discovery?tab=results",
-        "import_url": f"/discovery/import?scan_id={scan_id}" if scan_id else "/discovery/import",
+        "detail_url": f"/discovery?tab=results&scan_id={scan_id}"
+        if scan_id
+        else "/discovery?tab=results",
+        "import_url": f"/discovery/import?scan_id={scan_id}"
+        if scan_id
+        else "/discovery/import",
     }
 
 
@@ -2800,7 +3139,9 @@ async def mark_setup_complete() -> None:
 # ─── Topology ─────────────────────────────────────────────
 
 
-async def set_device_parent(device_id: int, parent_device_id: int | None) -> Optional[dict]:
+async def set_device_parent(
+    device_id: int, parent_device_id: int | None
+) -> Optional[dict]:
     if parent_device_id == device_id:
         raise ValueError("Device cannot be its own parent")
     return await update_host(device_id, parent_device_id=parent_device_id)
@@ -2824,7 +3165,9 @@ async def get_topology() -> dict[str, Any]:
         "by_subnet": by_subnet,
         "by_location": by_location,
         "by_type": by_type,
-        "gateways": [h for h in hosts if (h.get("host_type") or "") in ("router", "gateway")],
+        "gateways": [
+            h for h in hosts if (h.get("host_type") or "") in ("router", "gateway")
+        ],
     }
 
 
@@ -2900,7 +3243,9 @@ async def create_maintenance_task(
     return _row_to_dict(rows[0])
 
 
-async def list_maintenance_tasks(status: str | None = None, limit: int = 100) -> list[dict]:
+async def list_maintenance_tasks(
+    status: str | None = None, limit: int = 100
+) -> list[dict]:
     db_conn = await get_db()
     if status:
         rows = await db_conn.execute_fetchall(
@@ -2947,11 +3292,15 @@ async def get_enhanced_dashboard() -> dict[str, Any]:
         for scan in await list_discovery_scans(limit=5):
             if int(scan.get("found_count") or 0) <= 0:
                 continue
-            scan_devices = await list_discovered_devices(scan_id=int(scan["id"]), limit=20)
+            scan_devices = await list_discovered_devices(
+                scan_id=int(scan["id"]), limit=20
+            )
             if scan_devices:
                 discovered = scan_devices
                 discovery_needs_monitored_network = True
-                last_discovery_refresh = scan.get("finished_at") or scan.get("created_at")
+                last_discovery_refresh = scan.get("finished_at") or scan.get(
+                    "created_at"
+                )
                 break
     new_discovered = [d for d in discovered if not d.get("imported_host_id")]
     open_tasks = await list_maintenance_tasks(status="open", limit=10)
@@ -2959,7 +3308,8 @@ async def get_enhanced_dashboard() -> dict[str, Any]:
         **stats,
         "critical_problems": critical[:10],
         "devices_offline": offline[:10],
-        "services_failing": stats.get("services_critical", 0) + stats.get("services_warning", 0),
+        "services_failing": stats.get("services_critical", 0)
+        + stats.get("services_warning", 0),
         "recently_recovered": recovered[:5],
         "new_discovered": new_discovered[:10],
         "discovery_needs_monitored_network": discovery_needs_monitored_network,
@@ -2999,7 +3349,9 @@ async def create_notification(
                 (now, level, message, action_url, nid),
             )
             await db_conn.commit()
-            rows = await db_conn.execute_fetchall("SELECT * FROM notifications WHERE id = ?", (nid,))
+            rows = await db_conn.execute_fetchall(
+                "SELECT * FROM notifications WHERE id = ?", (nid,)
+            )
             return _row_to_dict(rows[0])
 
     cursor = await db_conn.execute(
@@ -3047,7 +3399,9 @@ async def mark_notification_read(notification_id: int) -> Optional[dict]:
         (_now(), notification_id),
     )
     await db_conn.commit()
-    rows = await db_conn.execute_fetchall("SELECT * FROM notifications WHERE id = ?", (notification_id,))
+    rows = await db_conn.execute_fetchall(
+        "SELECT * FROM notifications WHERE id = ?", (notification_id,)
+    )
     return _row_to_dict(rows[0]) if rows else None
 
 
@@ -3069,7 +3423,9 @@ async def dismiss_notification(notification_id: int) -> Optional[dict]:
         (now, now, notification_id),
     )
     await db_conn.commit()
-    rows = await db_conn.execute_fetchall("SELECT * FROM notifications WHERE id = ?", (notification_id,))
+    rows = await db_conn.execute_fetchall(
+        "SELECT * FROM notifications WHERE id = ?", (notification_id,)
+    )
     return _row_to_dict(rows[0]) if rows else None
 
 
@@ -3112,5 +3468,7 @@ async def count_system_logs_filtered(
 
 async def list_all_app_settings() -> dict[str, str]:
     db_conn = await get_db()
-    rows = await db_conn.execute_fetchall("SELECT key, value FROM app_settings ORDER BY key")
+    rows = await db_conn.execute_fetchall(
+        "SELECT key, value FROM app_settings ORDER BY key"
+    )
     return {str(r["key"]): str(r["value"]) for r in rows}

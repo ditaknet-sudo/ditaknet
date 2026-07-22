@@ -8,11 +8,12 @@ not use a floating tag.
 ghcr.io/ditaknet-sudo/ditaknet:2.0.1
 ```
 
-This tag is shown because it matches the current repository manifest, but it is
-a legacy amd64 artifact created before the Phase 3 hardening work. Do not claim
-that it contains later source changes. For a new production deployment using
-the complete hardened image contract, wait for and verify the next SemVer
-release, then replace every example pin consistently.
+This tag is shown because it matches the root legacy schema-v1 manifest, but it
+is an amd64-only artifact created before the Phase 3/4 hardening and signed
+update work. Do not claim that it contains later source changes or use it for
+the schema-v2 managed-update handoff. For a new production deployment using the
+complete hardened image contract, wait for and verify the next SemVer release,
+then replace every example pin consistently.
 
 Before installation, confirm that this exact tag exists and that the GHCR
 package is public:
@@ -22,7 +23,8 @@ docker pull ghcr.io/ditaknet-sudo/ditaknet:2.0.1
 ```
 
 If the pull returns `manifest unknown`, the release image has not been
-published. Do not substitute `latest`.
+published. Do not substitute `latest`; a historical alias may exist, but it is
+unsupported and the current release workflow never creates or moves it.
 
 ## 1. Create production datasets
 
@@ -128,6 +130,12 @@ hardening contract is:
 - `no-new-privileges`, `cap_drop: ALL`, and only `NET_RAW` restored;
 - bounded process count and Docker log rotation.
 
+The definitions select `DITAKNET_UPDATE_CHANNEL=stable` and require signed
+metadata. Choose `beta` only for an intentional prerelease deployment. Until
+the Phase 4 public keyring, protected signing environments, update-feed branch,
+and first new SemVer release are provisioned, update checks intentionally fail
+closed instead of using unsigned release discovery.
+
 ## 5. Validate the installation
 
 Open:
@@ -153,10 +161,46 @@ sudo tail -n 200 /var/log/app_lifecycle.log
 ## 6. Upgrade and rollback
 
 Never change only the container while forgetting the datasets. Before every
-upgrade, create both a DitakNet backup and a TrueNAS dataset snapshot, record the
-old image tag, and then change to the new exact SemVer. See
+upgrade, refresh **Settings → Updates** and require a trusted schema-v2 manifest.
+As an administrator, type exact `UPDATE X.Y.Z`; the preflight validates the
+version/digest/compatibility contract and creates a format-v2 target-bound
+backup. Record the resulting two-hour receipt, backup SHA-256, old image tag and
+digest, then create a recursive TrueNAS dataset snapshot.
+
+The signed rollback policy is never `image_only`; schema-v2 permits only
+`state_restore_required` or `unsupported`, and the latter blocks managed
+preflight.
+
+Use the receipt's external TrueNAS steps to change only the exact image tag and
+redeploy. DitakNet never controls the Apps service. Afterward verify
+`/health/deep`, login, state, monitoring, logs, and a new backup. See
 [`UPGRADE.md`](UPGRADE.md) for the verified upgrade, rollback, and recovery
-sequences.
+sequences, including state restore when the signed policy requires it.
+
+Database restore is offline-only. The Settings page can upload/validate a
+backup and display the one-shot command, but neither Settings nor first-run
+setup replaces the live database. For `state_restore_required`, use this exact
+receipt order:
+
+1. Stop the App and explicitly stop every legacy/pre-lock DitakNet container.
+2. Clone/roll back the recorded recursive pre-update ZFS snapshot for all
+   mounted datasets, or keep the failed/new image selected and run its generated
+   `python -m ditaknet.offline_restore` one-shot command with the exact same Data
+   and Backups mounts.
+3. Only after recovery succeeds, select the previous exact image.
+4. Start the App and require passing `/health/deep`.
+
+The mounted database-directory lifetime lock rejects the maintenance command if
+a current lock-aware App is still running. Legacy images predate the lock, which
+is why their explicit stop remains mandatory.
+
+The command validates the exact backup SHA-256 and confirmation, fsyncs the
+pre-offline backup, checkpoints/fsyncs the stopped current database, fsyncs the
+staged recovery database, makes one crash-atomic replacement, writes an external
+receipt under the backup dataset, and leaves the recovered database's version/
+schema markers untouched. When the exact same Data/Backups mounts cannot be
+reproduced safely, leave the App stopped and use the recorded recursive ZFS
+recovery clone. Never start the previous image before restoring state.
 
 ## Troubleshooting
 
@@ -170,3 +214,4 @@ sequences.
 | Poor LAN discovery | Configure LAN DNS, then consider the host-network variant |
 | Login loop behind HTTPS | Configure the public base URL and secure-cookie settings for the proxy |
 | App starts but backup fails | Check both `/app/data` and `/app/backups` permissions and free space |
+| Offline restore reports the database directory is in use | Stop every current App using that exact mounted database directory and explicitly stop legacy/pre-lock containers; never bypass the lifetime lock |

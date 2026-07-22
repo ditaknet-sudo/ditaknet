@@ -80,6 +80,7 @@ def _load_official_render(library_source: Path, import_root: Path) -> Any:
     fake_docker = types.ModuleType("docker")
     fake_docker.from_env = lambda: _NoDockerClient()  # type: ignore[attr-defined]
     sys.modules["docker"] = fake_docker
+
     # bcrypt is an official-library optional render helper; DitakNet's template
     # does not call it, so a no-op import shim avoids adding an unrelated app
     # runtime dependency to this deterministic renderer.
@@ -113,9 +114,7 @@ def _render_variant(render_module: Any, values_file: str) -> dict[str, Any]:
     template = environment.from_string(
         (APP / "templates/docker-compose.yaml").read_text(encoding="utf-8")
     )
-    ix_lib = types.SimpleNamespace(
-        base=types.SimpleNamespace(render=render_module)
-    )
+    ix_lib = types.SimpleNamespace(base=types.SimpleNamespace(render=render_module))
     rendered = template.render(values=values, ix_lib=ix_lib)
     document = json.loads(rendered)
     if not isinstance(document, dict):
@@ -146,6 +145,17 @@ def _assert_contract(name: str, mode: str, document: dict[str, Any]) -> None:
         raise AssertionError(f"{name}: no-new-privileges is missing")
     if service.get("environment", {}).get("APP_ENV") != "production":
         raise AssertionError(f"{name}: APP_ENV is not production")
+    expected_channel = "beta" if mode == "host" else "stable"
+    if (
+        service.get("environment", {}).get("DITAKNET_UPDATE_CHANNEL")
+        != expected_channel
+    ):
+        raise AssertionError(f"{name}: signed update channel was not rendered")
+    if (
+        service.get("environment", {}).get("DITAKNET_UPDATE_SIGNATURE_REQUIRED")
+        != "true"
+    ):
+        raise AssertionError(f"{name}: signed update enforcement is not enabled")
 
     targets = {
         mount.get("target")
@@ -193,7 +203,9 @@ def _assert_contract(name: str, mode: str, document: dict[str, Any]) -> None:
         if "permissions" not in services:
             raise AssertionError(f"{name}: permissions helper did not render")
         if dependency.get("condition") != "service_completed_successfully":
-            raise AssertionError(f"{name}: DitakNet does not wait for permissions helper")
+            raise AssertionError(
+                f"{name}: DitakNet does not wait for permissions helper"
+            )
 
 
 def render_all() -> tuple[str, list[str]]:
@@ -202,8 +214,12 @@ def render_all() -> tuple[str, list[str]]:
     repository = lock["catalog_repository"]
     version = lock["version"]
     if repository != OFFICIAL_REPOSITORY:
-        raise AssertionError("catalog lock does not use the official truenas/apps repository")
-    if len(commit) != 40 or any(character not in COMMIT_PATTERN for character in commit):
+        raise AssertionError(
+            "catalog lock does not use the official truenas/apps repository"
+        )
+    if len(commit) != 40 or any(
+        character not in COMMIT_PATTERN for character in commit
+    ):
         raise AssertionError("catalog lock commit is not a full lowercase Git SHA")
     os.environ.setdefault("FAKE_ENV", "1")
 
@@ -217,12 +233,18 @@ def render_all() -> tuple[str, list[str]]:
             f"/library/{version}/\n/library/hashes.yaml\n",
             encoding="utf-8",
         )
-        _run(["git", "fetch", "--quiet", "--depth", "1", "origin", commit], cwd=checkout)
+        _run(
+            ["git", "fetch", "--quiet", "--depth", "1", "origin", commit], cwd=checkout
+        )
         _run(["git", "checkout", "--quiet", "--detach", "FETCH_HEAD"], cwd=checkout)
 
-        hashes = yaml.safe_load((checkout / "library/hashes.yaml").read_text(encoding="utf-8"))
+        hashes = yaml.safe_load(
+            (checkout / "library/hashes.yaml").read_text(encoding="utf-8")
+        )
         if hashes.get(version) != lock["sha256"]:
-            raise AssertionError("pinned official commit does not contain the locked library hash")
+            raise AssertionError(
+                "pinned official commit does not contain the locked library hash"
+            )
 
         render_module = _load_official_render(
             checkout / "library" / version,

@@ -10,8 +10,17 @@
   }
   const i18n = config.i18n || {};
 
-  let restoreFilename = "";
   let restoreModal = null;
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, (character) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[character]));
+  }
 
   function showAlert(message, type) {
     const el = document.getElementById("backups-alert");
@@ -46,23 +55,23 @@
       const data = await api("GET", "/api/backups");
       const backups = data.backups || [];
       if (!backups.length) {
-        tbody.innerHTML = `<tr><td colspan="8" class="text-muted text-center py-4">${i18n.no_backups || "No backups"}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="text-muted text-center py-4">${escapeHtml(i18n.no_backups || "No backups")}</td></tr>`;
         return;
       }
       tbody.innerHTML = backups
         .map(
           (b) => `<tr>
-            <td class="font-monospace small">${b.filename}</td>
-            <td>${b.backup_type || "—"}</td>
-            <td>${b.app_version || "—"}</td>
-            <td class="small">${formatTime(b.created_at)}</td>
-            <td>${b.size_display || b.size_bytes}</td>
-            <td class="small">${b.includes_summary || "—"}</td>
-            <td><span class="badge bg-success">${b.status || "ready"}</span></td>
+            <td class="font-monospace small">${escapeHtml(b.filename)}</td>
+            <td>${escapeHtml(b.backup_type || "—")}</td>
+            <td>${escapeHtml(b.app_version || "—")}</td>
+            <td class="small">${escapeHtml(formatTime(b.created_at))}</td>
+            <td>${escapeHtml(b.size_display || b.size_bytes)}</td>
+            <td class="small">${escapeHtml(b.includes_summary || "—")}</td>
+            <td><span class="badge bg-success">${escapeHtml(b.status || "ready")}</span></td>
             <td class="text-end text-nowrap">
-              <a class="btn btn-sm btn-outline-primary" href="/api/backups/${encodeURIComponent(b.filename)}/download">${i18n.download || "Download"}</a>
-              <button type="button" class="btn btn-sm btn-outline-warning" data-restore="${b.filename}">${i18n.restore || "Restore"}</button>
-              <button type="button" class="btn btn-sm btn-outline-danger" data-delete="${b.filename}">${i18n.delete || "Delete"}</button>
+              <a class="btn btn-sm btn-outline-primary" href="/api/backups/${encodeURIComponent(b.filename)}/download">${escapeHtml(i18n.download || "Download")}</a>
+              <button type="button" class="btn btn-sm btn-outline-warning" data-restore="${escapeHtml(b.filename)}">${escapeHtml(i18n.restore || "Restore")}</button>
+              <button type="button" class="btn btn-sm btn-outline-danger" data-delete="${escapeHtml(b.filename)}">${escapeHtml(i18n.delete || "Delete")}</button>
             </td>
           </tr>`
         )
@@ -74,48 +83,30 @@
         btn.addEventListener("click", () => deleteBackup(btn.getAttribute("data-delete")));
       });
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-4">${err.message || "Error"}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-4">${escapeHtml(err.message || "Error")}</td></tr>`;
     }
   }
 
   async function openRestore(filename) {
-    restoreFilename = filename;
     const box = document.getElementById("restore-validation");
+    const command = document.getElementById("restore-command");
     if (box) {
-      box.innerHTML = "…";
+      box.textContent = "…";
+      if (command) command.textContent = "";
       try {
         const v = await api("POST", `/api/backups/${encodeURIComponent(filename)}/validate`);
-        box.innerHTML = `<div class="alert alert-info mb-0 py-2"><strong>${i18n.validate_ok || "Valid"}</strong> — ${v.backup_type}, v${v.app_version || "?"}</div>`;
+        box.textContent = `${i18n.validate_ok || "Valid"} — ${v.backup_type || "backup"}, v${v.app_version || "?"}`;
+        box.className = "mb-3 small alert alert-info py-2";
+        if (command) command.textContent = v.offline_restore_command || "";
       } catch (err) {
-        box.innerHTML = `<div class="alert alert-danger mb-0 py-2">${err.message}</div>`;
+        box.textContent = err.message || "Validation failed";
+        box.className = "mb-3 small alert alert-danger py-2";
       }
     }
-    document.getElementById("restore-confirm").checked = false;
     if (!restoreModal && window.bootstrap) {
       restoreModal = new bootstrap.Modal(document.getElementById("restore-modal"));
     }
     restoreModal?.show();
-  }
-
-  async function submitRestore() {
-    if (!document.getElementById("restore-confirm")?.checked) {
-      showAlert("Confirmation required", "warning");
-      return;
-    }
-    const mode = document.getElementById("restore-mode")?.value || "full_restore";
-    const body = { mode, confirm: true };
-    if (mode === "full_restore_reset_admin") {
-      body.new_admin_username = document.getElementById("restore-admin-user")?.value?.trim();
-      body.new_admin_password = document.getElementById("restore-admin-pass")?.value || "";
-    }
-    try {
-      await api("POST", `/api/backups/${encodeURIComponent(restoreFilename)}/restore`, body);
-      showAlert(i18n.restore_ok || "Restore completed", "success");
-      restoreModal?.hide();
-      loadBackups();
-    } catch (err) {
-      showAlert(err.message || "Restore failed", "danger");
-    }
   }
 
   async function deleteBackup(filename) {
@@ -158,17 +149,6 @@
     }
     ev.target.value = "";
   });
-
-  document.getElementById("btn-restore-backup")?.addEventListener("click", () => {
-    document.getElementById("backup-upload-input")?.click();
-  });
-
-  document.getElementById("restore-mode")?.addEventListener("change", (ev) => {
-    const show = ev.target.value === "full_restore_reset_admin";
-    document.getElementById("restore-admin-fields")?.classList.toggle("d-none", !show);
-  });
-
-  document.getElementById("restore-submit-btn")?.addEventListener("click", submitRestore);
 
   loadBackups();
 })();

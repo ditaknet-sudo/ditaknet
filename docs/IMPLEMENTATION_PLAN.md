@@ -7,14 +7,27 @@
 ## Ընդհանուր վիճակ
 
 - Սկզբնական գնահատական՝ 65%
-- Ընթացիկ փուլ՝ Փուլ 3 — ավարտված, Փուլ 4-ը չի սկսվել
-- Ընթացիկ գնահատական՝ 90%
+- Ընթացիկ փուլ՝ Փուլ 4 — offline-only restore final audit-ի փոփոխություններից
+  հետո ամբողջական local validation re-run-ը ընթացքի մեջ է, իսկ clean-clone/
+  push/remote CI-ն դեռ pending են
+- Ընթացիկ գնահատական՝ 95% (Փուլ 4-ի թիրախը՝ 96%, հաստատումից հետո)
+- Մնացած փուլեր՝ 2՝ ներառյալ ընթացիկ Փուլ 4-ը, ապա Փուլ 5-ը։ Փուլ 4-ի
+  հաստատումից հետո կմնա միայն 1 փուլ։
 - Փուլ 1-ի կարգավիճակ՝ ավարտված
 - Փուլ 2-ի կարգավիճակ՝ ավարտված, GitHub quality/image-smoke run-ը հաջող է
 - Փուլ 3-ի կարգավիճակ՝ packaging/hardening/CI աշխատանքները ավարտված են, multi-arch remote run-ը հաջող է
+- Փուլ 4-ի կարգավիճակ՝ signed-update/preflight/database/release/offline-restore
+  code-ը պատրաստ է, բայց նոր architecture-ից հետո local quality/security gate-երի
+  վերջնական re-run-ը, clean-clone ու GitHub push/CI-ն դեռ չեն ավարտվել
+- Փուլ 5-ի կարգավիճակ՝ չի սկսվել․ իրական Docker/TrueNAS upgrade/rollback
+  փորձարկումները մնում են
 - Production սերվերի գործարկում՝ չի կատարվում
-- Git վիճակ՝ local/remote `main` համաժամեցված են, reviewed commit-ը push է արված առանց force-ի
-- Թարմացման սկզբունք՝ versionավորված, backup-first, admin-confirmed, rollback-capable
+- Git վիճակ՝ Փուլ 4-ի աշխատանքային փոփոխությունները դեռ local են․ commit/push և
+  նոր remote CI արդյունք այս հաշվետվության պահին չկան
+- Repository path՝ նախկին `F:` կրիչը անհասանելի դառնալուց հետո նույն ամբողջական
+  worktree-ն գտնվել և շարունակվում է `D:\SmartTech Monitoring Server\DitakNetMonitoring`-ում
+- Թարմացման սկզբունք՝ signed/digest-bound, fail-closed, backup-first,
+  admin-confirmed, external-redeploy, rollback-capable
 
 ## Կարգավիճակների նշանակությունը
 
@@ -69,24 +82,71 @@
 
 ## Փուլ 4 — Կայուն թարմացումներ (թիրախ՝ 96%)
 
-- [ ] `stable` և `beta` update channel-ներ։
-- [x] Signing key-ի առկայության դեպքում fail-closed signature verification՝ առանց unsigned fallback-ի։
-- [ ] Production signing key provisioning, ստորագրված manifest-ի հրապարակում և default-ով պարտադիր signature policy։
-- [~] Immutable exact-version GHCR tag guard — transactional pipeline-ը պատրաստ է, բայց իրական guard/publish-ը կաշխատի միայն առաջին նոր SemVer release-ի ժամանակ։
-- [ ] Հրապարակված digest-ի ստուգում և update manifest/release metadata-ում պահպանում։
-- [ ] Update-ից առաջ պարտադիր SQLite backup։
-- [ ] Version/migration compatibility validation։
-- [ ] Admin confirmation և TrueNAS-ի կառավարելի update ճանապարհ։
-- [ ] Health verification և rollback ընթացակարգ։
+- [x] Առանձին `stable` և `beta` update channel-ներ՝ անկախ URL-ներով, key
+  scope-ով, cache trust policy-ով և monotonic anti-replay sequence-ով։
+- [x] Strict schema-v2 Ed25519 manifest՝ default fail-closed signature policy-ով
+  և առանց unsigned GitHub Releases fallback-ի։ Key rotation-ի համար մեկ channel-ում
+  մի քանի public key/signature է թույլատրվում, իսկ private key-ը source-ում չի պահվում։
+- [x] Exact GHCR SemVer tag-ը cryptographically կապվում է multi-arch index
+  digest-ին և պարտադիր `linux/amd64`/`linux/arm64` child digest-ներին, ինչպես նաև
+  source commit-ին, UTC publication time-ին, Release URL-ին ու compatibility policy-ին։
+- [x] Immutable release workflow՝ նախ channel protected signing key-ի ստուգում,
+  smoke-tested staging artifacts, OCI provenance/SBOM attestation verify, signed
+  manifest, վերջում exact GHCR tag, GitHub Release manifest asset և ամենավերջում
+  ընտրված channel feed-ի promotion։ Նույն digest-ով partial release-ի metadata
+  repair-ը թույլատրված է, տարբեր digest-ով overwrite-ը՝ արգելված։
+- [x] Update-ից առաջ պարտադիր backup format 2՝ member/final SHA-256,
+  ZIP/SQLite quick/foreign-key validation և target version/digest/schema/channel/
+  sequence-ին կապված operation context-ով։
+- [x] Admin-only exact `UPDATE X.Y.Z` preflight՝ forced fresh manifest check,
+  compatibility validation, validated backup և երկու ժամ գործող, յուրաքանչյուր
+  բացման ժամանակ backup-ը նորից ստուգող auditable receipt։ Receipt-ը տալիս է միայն
+  արտաքին Docker/TrueNAS/rollback հրահանգներ․ DitakNet-ը container չի redeploy անում։
+- [x] Signed compatibility/managed preflight-ը ամբողջությամբ մերժում է
+  `image_only` policy-ն՝ DB writer guard-ի հետ tag-only rollback-ը անվտանգ չլինելու
+  պատճառով։ Թույլատրելի schema value-ներն են միայն `state_restore_required` և
+  `unsupported`, իսկ վերջինը managed preflight-ը block է անում։
+- [x] Database last-writer SemVer/schema/minimum-reader/migration-fingerprint
+  guard-եր, future schema և unsafe downgrade-ի մերժում, migration-ից առաջ validated
+  backup և `/health/deep` compatibility evidence։
+- [x] Restore-ը դարձավ միայն offline․ web process-ը ամբողջ lifetime-ի ընթացքում
+  պահում է mounted database-directory exclusive lock-ը, իսկ one-shot maintenance
+  CLI-ն պարտադիր նույն lock-ը և mounts-ն է ստանում։ Legacy/pre-lock image-ները lock-ով
+  չեն հայտնաբերվում, ուստի explicit stop-ը պարտադիր է։ Settings/setup live restore-ը disabled է։ CLI-ն
+  պահանջում է exact backup SHA-256 ու `RESTORE <filename>`, ստեղծում է validated
+  pre-offline snapshot և external JSON receipt, բայց restored DB-ն application-ով
+  չի reopen/migrate/re-stamp անում՝ rollback marker-ները պահպանելու համար։
+- [x] Offline swap-ը crash-atomic է․ pre-restore backup file+directory fsync,
+  stopped current DB-ի `wal_checkpoint(TRUNCATE)`/sidecar cleanup/validation/fsync,
+  staged DB validation/hash/fsync և մեկ վերջնական `os.replace` + directory fsync։
+- [x] Backup upload/ZIP validation caps՝ compressed/uncompressed չափ, member count,
+  per-member limit, compression ratio, unique safe paths և streamed hashes։ Web
+  validation-ի blocking ZIP/SQLite աշխատանքը event loop-ից տեղափոխվել է worker thread։
+- [x] Legacy root `update-manifest.json`-ը հստակ սահմանափակվել է schema-v1
+  `2.0.1` amd64 artifact-ով․ այն schema-v2 managed handoff չի բացում։
+- [!] Արտաքին production provisioning-ը դեռ պահանջվում է՝ `stable`/`beta`
+  public key-եր committed keyring-ում, համապատասխան private-key secrets՝ protected
+  GitHub environments-ում, `update-feed` branch protection և առաջին նոր SemVer
+  release։ Ներկա keyring-ը դիտավորյալ դատարկ է, հետևաբար publish-ը fail-closed է։
+- [~] Offline-only restore architecture-ից հետո ամբողջական local validation-ը
+  նորից գործարկվում է․ վերջնական test count և quality/security արդյունքները դեռ
+  pending են և այս checkpoint-ում ավարտված չեն հայտարարվում։
+- [~] Phase 4-ի փակման համար դրանից հետո մնում են clean-clone verification-ը,
+  reviewed commit/push-ը և remote GitHub CI result-ը։ Այս կետերը փակվելուց հետո
+  կմնա միայն Փուլ 5-ը։
 
 ## Փուլ 5 — Վերջնական release validation (թիրախ՝ 100%)
 
-- [ ] Մաքուր temporary Docker install։
+- [ ] Մաքուր temporary Docker install՝ վերջնական նոր SemVer multi-arch artifact-ով։
 - [ ] First-run setup՝ դատարկ database-ով։
-- [ ] Նախորդ version-ից upgrade։
-- [ ] Backup/restore և restart փորձարկումներ։
-- [ ] Կեղծված manifest-ի end-to-end մերժում container/update հոսքում (unit regression coverage-ը պատրաստ է)։
-- [ ] Անհաջող update-ի rollback փորձարկում։
+- [ ] Իրական նախորդ version-ից signed stable/beta preflight և upgrade։
+- [ ] Offline one-shot backup/restore, external receipt և restart փորձարկումներ։
+- [ ] Կեղծված/replayed/wrong-channel manifest-ի end-to-end մերժում իրական
+  container/update հոսքում (unit regression coverage-ը պատրաստ է)։
+- [ ] Անհաջող update-ի պարտադիր state-restore rollback կամ `unsupported` policy-ի
+  fail-closed մերժման փորձարկում։
+- [ ] Իրական TrueNAS SCALE bridge/host-network install, update, deep-health և
+  rollback validation՝ առանց production տվյալների օգտագործման։
 - [ ] Release checklist-ի ամբողջական հաստատում։
 
 ## Աշխատանքների մատյան
@@ -171,7 +231,102 @@
 - Մաքրվեցին workspace-ի **19 cache պանակ** և `%TEMP%`-ի **9 `ditaknet-*` test/tool/log նյութ**։ Դրանք տեղափոխվեցին Windows Recycle Bin և վերականգնելի են։ Վերջնական մնացորդը՝ **0**։
 - Իրական `data/ditaknet.db`-ը չօգտագործվեց և չփոփոխվեց․ SHA-256-ը մնաց `6B6F9F5CC4CB9601E72AEFB5A33F29961BFD2981D20264FAB157BAF68F7FFB40`, չափը՝ `6721536`, UTC mtime-ը՝ `2026-07-14T07:54:41.4443873Z`։
 
+### 2026-07-22 — Փուլ 4, signed update և backup-first handoff
+
+- Աշխատանքի ընթացքում նախկին `F:` կրիչը դարձավ անհասանելի։ Նույն Git history-ով,
+  runtime տվյալներով և Փուլ 4-ի չcommit արված փոփոխություններով ամբողջական worktree-ն
+  գտնվեց `D:\SmartTech Monitoring Server\DitakNetMonitoring`-ում, և աշխատանքը
+  շարունակվեց այնտեղից՝ առանց վերասկսելու կամ ֆայլ կորցնելու։
+- Ավելացվեց canonical `VERSION` source, իսկ root `update-manifest.json`-ը
+  պահպանվեց որպես հրապարակված `2.0.1` legacy amd64 artifact-ի schema-v1 record։
+  Phase 3/4 հնարավորությունները դեռ release չեն և պահանջում են նոր SemVer։
+- Կառուցվեց strict schema-v2 metadata contract՝ առանձին `stable`/`beta`
+  channel-ներով, Ed25519 public-key keyring/rotation-ով, canonical signing-ով,
+  signed compatibility policy-ով և channel-scoped monotonic anti-replay sequence-ով։
+- Manifest-ը պարտադիր կապում է exact պաշտոնական GHCR tag-ը multi-arch index
+  digest-ին և `linux/amd64`/`linux/arm64` child digest-ներին, source commit-ին,
+  GitHub Release URL-ին և UTC publication time-ին։ Unknown field/channel/key,
+  bad signature/digest կամ stale sequence-ը fail-closed է։
+- Update checker-ը բաժանվեց առանձին official stable/beta feed-երի, default
+  signature-required policy-ով։ Cache reuse-ը կապվեց URL/channel/keyring/policy
+  fingerprint-ին, իսկ unsigned fallback-ը չի կարող managed handoff բացել։
+- Backup format-ը դարձավ 2՝ archive-ի անդամների և վերջնական ZIP-ի SHA-256-ներով,
+  SQLite `quick_check`/`foreign_key_check` validation-ով և pre-update/
+  pre-migration operation context-ով։ Failed validation-ի artifact-ը usable
+  backup չի համարվում։
+- Ավելացվեց admin-only update preflight․ admin-ը պետք է ճշգրիտ մուտքագրի
+  `UPDATE <version>`, որից հետո կատարվում է fresh signed check, version/digest/
+  compatibility validation, target-bound backup creation+revalidation և audit
+  receipt-ի պահպանում։ Receipt-ը գործում է առավելագույնը երկու ժամ, backup-ը
+  կրկին ստուգվում է բացելիս և տրամադրում է միայն արտաքին Docker/TrueNAS/
+  rollback հրահանգներ։ Սերվերի կամ container-ի ավտոմատ գործարկում չի ավելացվել։
+- `image_only` compatibility-ն հանվեց signed schema/preflight-ից, քանի որ
+  persisted DB writer guard-ի դեպքում tag-only rollback-ի անվտանգությունը չի
+  ապացուցվում։ Մնում են միայն `state_restore_required` և `unsupported`, ընդ որում
+  `unsupported`-ը managed preflight-ը fail-closed block է անում։
+- Database initialization-ը ստացավ persisted last-writer SemVer, schema
+  revision, minimum reader և migration fingerprint guard-եր։ Future schema-ն ու
+  unsafe app downgrade-ը մերժվում են state-ը փոխելուց առաջ, իսկ version transition-ի
+  դեպքում migration-ից առաջ ստեղծվում ու ստուգվում է format-v2 backup։
+- Final restore audit-ից հետո live database replacement-ը ամբողջությամբ
+  արգելվեց։ Web process-ը mounted database-directory cross-process lock-ը պահում է
+  ամբողջ lifetime-ի ընթացքում, իսկ offline CLI-ն նույն lock-ը non-blocking ստանալու
+  ձախողման դեպքում restore-ը մերժում է։ Legacy/pre-lock image-ների դեպքում lock-ը
+  activity չի կարող հայտնել, ուստի explicit stop-ը պարտադիր է։ Settings-ը միայն
+  upload/validate և generated command է ցույց տալիս, setup-time live restore-ը նույնպես disabled է։
+- State rollback-ի հերթը սահմանվեց fail-closed․ failed/new exact image-ը մնում է
+  ընտրված → `docker compose stop ditaknet` → նույն image/mounts-ով one-shot
+  `python -m ditaknet.offline_restore`՝ approved SHA-256 և exact
+  `RESTORE <filename>` confirmation-ով → success-ից հետո միայն previous exact
+  tag և `up -d`։ TrueNAS receipt-ի հերթը՝ Stop App → բոլոր recorded mounted
+  datasets-ի recursive pre-update ZFS snapshot clone/rollback կամ failed/new image-ով
+  same Data/Backups mounts one-shot → միայն հետո previous exact tag → start/deep-health։
+- Offline restore-ը replacement-ից առաջ ստեղծում և validate է անում
+  `ditaknet-pre-offline-restore-*` snapshot և fsync է անում file+directory-ն։ Հետո
+  current DB-ն տեղում `wal_checkpoint(TRUNCATE)`/sidecar cleanup/validation/fsync է
+  անցնում, staged DB-ն validate/hash/fsync է արվում, և կատարվում է մեկ վերջնական
+  crash-atomic `os.replace` + directory fsync։
+  Ավարտից հետո backup mount-ում գրվում է external JSON receipt՝ source/restored
+  hash-երով։ Restore image-ը recovered DB-ն application initialization-ով չի reopen,
+  migrate կամ re-stamp անում։
+- Backup/ZIP ingestion-ին ավելացվեցին compressed/uncompressed չափի, member count-ի,
+  per-member չափի և compression ratio-ի caps, duplicate/unsafe path rejection ու
+  streamed checksum validation։ Web upload/validation-ի blocking ZIP/SQLite աշխատանքը
+  offload է արվում worker thread՝ async event loop-ը չարգելափակելու համար։
+- Release workflow-ը դարձավ channel-aware և tag-triggered․ protected signing
+  key check-ը կատարվում է registry mutation-ից առաջ, հետո verify են արվում
+  staging index/platform digest-երը, OCI provenance/SBOM attestations-ը և signed
+  manifest-ը։ Exact SemVer tag-ից հետո ստեղծվում/repair է արվում GitHub Release-ն
+  ու նույն manifest asset-ը, իսկ ընտրված channel feed-ը թարմացվում է ամենավերջում։
+- Նույն source/digest-ով partial publication-ի metadata repair-ը նախատեսված է,
+  բայց գոյություն ունեցող exact tag-ի տարբեր digest-ը երբեք չի overwrite արվում։
+  GHCR `:latest` պատմական alias կարող է գոյություն ունենալ, սակայն այն unsupported
+  է և ներկա workflow-ը չի ստեղծում կամ տեղափոխում այն։
+- Updates UI-ից հեռացվեցին unsafe dynamic HTML կառուցումները, ավելացվեցին trust,
+  schema, digest և backup-first preflight վիճակները, իսկ redeploy հրահանգները
+  փակ են մինչև վավեր, չժամկետանց receipt-ը։
+- Offline-only restore final audit-ից հետո ամբողջական local validation re-run-ը
+  ավարտվեց՝ **216 passed, 0 failed, 1 տեղական warning**։ Warning-ը գալիս է միայն
+  այս workstation-ի Starlette/httpx compatibility-ից․ CI lock-ը ներառում է
+  `httpx2==2.7.0`։ Փոփոխված Python ֆայլերի Ruff format/check-ը, compileall-ը,
+  JavaScript syntax check-ը, release/version consistency-ը, 7 JSON ֆայլերի parse-ը,
+  actionlint-ը, Compose config-ը և TrueNAS upstream/catalog render validation-ը
+  կանաչ են։
+- Clean-clone verification-ը, commit/push-ը, CI-ի Bandit/pip-audit/secret-scan
+  gates-ը և նոր GitHub Actions run-ը այս գրառման պահին դեռ pending են։
+- Production signing material չի ստեղծվել կամ commit արվել։ Committed keyring-ի
+  `stable` և `beta` բաժինները դիտավորյալ դատարկ են։ Արտաքին owner action է մնում
+  public key provisioning-ը, protected environment private-key secrets-ը,
+  `update-feed` branch protection-ը և առաջին նոր SemVer release-ի հաստատումը։
+- Փուլերի մնացորդը այս checkpoint-ում 2 է՝ ընթացիկ Փուլ 4-ի validation/push/CI
+  փակումը և Փուլ 5-ի իրական Docker/TrueNAS upgrade/rollback փորձարկումները։
+  Փուլ 4-ը հաստատելուց հետո կմնա 1 փուլ։
+
 ## Հաջորդ հաշվետվություն
 
-Փուլ 4-ը կսկսվի միայն առանձին հրահանգով՝ update channel-ներ, production signing,
-manifest/release digest synchronization և նոր SemVer release-ի վերահսկվող պատրաստում։
+Հաջորդ հաշվետվությունը կփակի Փուլ 4-ը միայն full local validation re-run,
+clean-clone verification, reviewed commit/push և հաջող remote GitHub CI-ից հետո։ Production
+signing key provisioning-ը, protected environments/update-feed protection-ը և
+առաջին նոր SemVer release-ը կմնան հստակ արտաքին prerequisite-ներ։ Դրանից հետո
+կմնա միայն Փուլ 5-ը՝ իրական մեկուսացված Docker և TrueNAS SCALE install/upgrade/
+rollback validation-ը։

@@ -60,6 +60,8 @@ services:
       LOG_DIR: /app/logs
       BACKUP_DIR: /app/backups
       PLUGIN_DIR: /app/plugins
+      DITAKNET_UPDATE_CHANNEL: ${DITAKNET_UPDATE_CHANNEL:-stable}
+      DITAKNET_UPDATE_SIGNATURE_REQUIRED: "true"
       # Optional: DISCOVERY_DNS_SERVERS: "192.168.1.1"
     healthcheck:
       test:

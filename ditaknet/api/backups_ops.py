@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-import shutil
+import asyncio
+import os
+import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
@@ -11,6 +13,8 @@ from pydantic import BaseModel
 
 from ditaknet import database as db
 from ditaknet.core.backup import (
+    BACKUP_OPERATION_LOCK,
+    MAX_BACKUP_FILE_BYTES,
     backup_root,
     create_full_backup,
     delete_backup,
@@ -18,18 +22,27 @@ from ditaknet.core.backup import (
     resolve_backup_path,
     validate_backup_file,
 )
-from ditaknet.core.notifications_service import notify_backup_result, notify_restore_result
-from ditaknet.core.restore import RestoreMode, restore_from_backup
+from ditaknet.core.notifications_service import (
+    notify_backup_result,
+    notify_restore_result,
+)
+from ditaknet.core.restore import (
+    OfflineRestoreRequired,
+    offline_restore_command,
+    restore_from_backup,
+)
 from ditaknet.security import AuthenticatedUser, require_permissions
 
 router = APIRouter(prefix="/backups", tags=["backups"])
 
 
+async def _serialize_backup_mutation():
+    async with BACKUP_OPERATION_LOCK:
+        yield
+
+
 class RestoreRequest(BaseModel):
-    mode: RestoreMode = "full_restore"
     confirm: bool = False
-    new_admin_username: str | None = None
-    new_admin_password: str | None = None
 
 
 @router.get("")
@@ -43,6 +56,7 @@ async def list_backup_files(
 async def create_backup_file(
     request: Request,
     user: AuthenticatedUser = Depends(require_permissions("backups.create")),
+    _operation_guard: None = Depends(_serialize_backup_mutation),
 ) -> dict:
     try:
         backup = await create_full_backup()
@@ -57,7 +71,9 @@ async def create_backup_file(
         return backup
     except Exception as exc:
         await notify_backup_result(success=False, filename="", detail=str(exc))
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        ) from exc
 
 
 @router.get("/{filename}/download")
@@ -79,18 +95,57 @@ async def upload_backup(
     request: Request,
     file: UploadFile = File(...),
     user: AuthenticatedUser = Depends(require_permissions("backups.restore")),
+    _operation_guard: None = Depends(_serialize_backup_mutation),
 ) -> dict:
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in {".zip", ".sqlite3", ".db", ".sqlite"}:
         raise HTTPException(status_code=400, detail="Unsupported backup file type")
-    dest = backup_root() / Path(file.filename or "uploaded-backup").name
-    with dest.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
+    filename = Path(file.filename or f"uploaded-backup{suffix}").name
+    dest = resolve_backup_path(filename, zip_backup=suffix == ".zip")
+    if dest.exists():
+        raise HTTPException(
+            status_code=409, detail="A backup with this name already exists"
+        )
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".ditaknet-upload-",
+        suffix=suffix,
+        dir=backup_root(),
+    )
+    os.close(descriptor)
+    temporary_path = Path(temporary_name)
     try:
-        validation = validate_backup_file(dest.name)
+        total = 0
+        with temporary_path.open("wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if total > MAX_BACKUP_FILE_BYTES:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                        detail="Backup upload exceeds the supported size limit",
+                    )
+                out.write(chunk)
+            out.flush()
+            os.fsync(out.fileno())
+
+        validation = await asyncio.to_thread(validate_backup_file, temporary_path.name)
+        try:
+            # A same-directory hard link is atomic and never overwrites an
+            # existing recovery point. Remove the private temporary name only
+            # after the validated inode has its final collision-safe name.
+            os.link(temporary_path, dest)
+        except FileExistsError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="A backup with this name already exists",
+            ) from exc
+        validation["filename"] = dest.name
     except Exception as exc:
-        dest.unlink(missing_ok=True)
+        temporary_path.unlink(missing_ok=True)
+        if isinstance(exc, HTTPException):
+            raise
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    temporary_path.unlink(missing_ok=True)
     await db.create_audit_log(
         "backup.upload",
         actor=user.username,
@@ -107,7 +162,12 @@ async def validate_backup(
     user: AuthenticatedUser = Depends(require_permissions("backups.view")),
 ) -> dict:
     try:
-        return validate_backup_file(filename)
+        validation = await asyncio.to_thread(validate_backup_file, filename)
+        validation["offline_restore_required"] = True
+        validation["offline_restore_command"] = offline_restore_command(
+            filename, str(validation["sha256"])
+        )
+        return validation
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -124,14 +184,17 @@ async def restore_backup(
     try:
         result = await restore_from_backup(
             filename,
-            mode=body.mode,
             confirm=body.confirm,
-            new_admin_username=body.new_admin_username,
-            new_admin_password=body.new_admin_password,
             actor=user.username,
         )
         await notify_restore_result(success=True, filename=filename)
         return result
+    except OfflineRestoreRequired as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+            headers={"X-DitakNet-Restore-Mode": "offline-required"},
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -144,6 +207,7 @@ async def remove_backup(
     filename: str,
     request: Request,
     user: AuthenticatedUser = Depends(require_permissions("backups.delete")),
+    _operation_guard: None = Depends(_serialize_backup_mutation),
 ) -> dict:
     try:
         delete_backup(filename)

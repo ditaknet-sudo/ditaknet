@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from pathlib import Path
 
+import pytest
+
 from ditaknet import database as db
+from ditaknet.core import backup
 from ditaknet.core.rbac import DEFAULT_ROLES
 
 
@@ -28,6 +32,11 @@ def test_init_db_creates_healthy_schema_in_temporary_path(tmp_path: Path) -> Non
             health = await db.schema_health()
             assert health["ok"] is True
             assert health["missing_tables"] == []
+            assert health["missing_columns"] == {}
+            assert health["missing_migrations"] == []
+            assert health["schema_revision"] == db.DATABASE_SCHEMA_REVISION
+            assert health["quick_check"] == ["ok"]
+            assert health["foreign_key_violations"] == 0
 
             table_rows = await connection.execute_fetchall(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
@@ -45,7 +54,152 @@ def test_init_db_creates_healthy_schema_in_temporary_path(tmp_path: Path) -> Non
                 for row in await connection.execute_fetchall("PRAGMA table_info(users)")
             }
             assert {"host_type", "location", "parent_device_id"} <= host_columns
-            assert {"permissions_json", "session_version", "locked_until"} <= user_columns
+            assert {
+                "permissions_json",
+                "session_version",
+                "locked_until",
+            } <= user_columns
+        finally:
+            await db.close_db()
+
+    asyncio.run(exercise())
+
+
+def test_version_change_creates_validated_pre_migration_recovery_point(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path = tmp_path / "upgrade.db"
+    backup_directory = tmp_path / "backups"
+    monkeypatch.setattr(backup.settings, "backup_dir", str(backup_directory))
+
+    async def exercise() -> None:
+        await db.close_db()
+        try:
+            connection = await db.init_db(str(database_path))
+            await connection.execute(
+                "UPDATE app_settings SET value = ? WHERE key = ?",
+                ("2.0.0", "database_last_writer_version"),
+            )
+            await connection.commit()
+            await db.close_db()
+
+            await db.init_db(str(database_path))
+            recovery_points = sorted(
+                backup_directory.glob("ditaknet-pre-migration-*.zip")
+            )
+            assert len(recovery_points) == 1
+            validation = backup.validate_backup_file(recovery_points[0].name)
+            assert validation["valid"] is True
+            assert validation["backup_origin"] == "pre_migration"
+            assert validation["operation_context"]["source_version"] == "2.0.0"
+            assert validation["operation_context"]["target_version"] == "2.0.1"
+        finally:
+            await db.close_db()
+
+    asyncio.run(exercise())
+
+
+def test_future_schema_is_rejected_before_database_mutation(tmp_path: Path) -> None:
+    database_path = tmp_path / "future-schema.db"
+
+    async def exercise() -> None:
+        await db.close_db()
+        connection = await db.init_db(str(database_path))
+        await connection.execute(
+            "UPDATE app_settings SET value = ? WHERE key = ?",
+            (str(db.DATABASE_SCHEMA_REVISION + 1), "database_schema_revision"),
+        )
+        await connection.commit()
+        await db.close_db()
+
+        before_hash = hashlib.sha256(database_path.read_bytes()).hexdigest()
+        before_mtime = database_path.stat().st_mtime_ns
+        with pytest.raises(RuntimeError, match="newer DitakNet version"):
+            await db.init_db(str(database_path))
+        assert hashlib.sha256(database_path.read_bytes()).hexdigest() == before_hash
+        assert database_path.stat().st_mtime_ns == before_mtime
+        assert db._db is None
+
+    asyncio.run(exercise())
+
+
+def test_application_downgrade_requires_state_restore(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path = tmp_path / "downgrade.db"
+
+    async def exercise() -> None:
+        await db.close_db()
+        await db.init_db(str(database_path))
+        await db.close_db()
+        monkeypatch.setattr(db.settings, "app_version", "2.0.0")
+
+        with pytest.raises(RuntimeError, match="downgrade detected"):
+            await db.init_db(str(database_path))
+        assert db._db is None
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize(
+    ("writer_version", "older_version"),
+    [
+        ("2.0.1", "2.0.1-rc.1"),
+        ("2.0.1-beta.2", "2.0.1-beta.1"),
+    ],
+)
+def test_prerelease_downgrade_is_rejected_before_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    writer_version: str,
+    older_version: str,
+) -> None:
+    database_path = tmp_path / f"prerelease-{older_version}.db"
+
+    async def exercise() -> None:
+        await db.close_db()
+        monkeypatch.setattr(db.settings, "app_version", writer_version)
+        await db.init_db(str(database_path))
+        await db.close_db()
+        before_hash = hashlib.sha256(database_path.read_bytes()).hexdigest()
+
+        monkeypatch.setattr(db.settings, "app_version", older_version)
+        with pytest.raises(RuntimeError, match="downgrade detected"):
+            await db.init_db(str(database_path))
+        assert hashlib.sha256(database_path.read_bytes()).hexdigest() == before_hash
+        assert db._db is None
+
+    asyncio.run(exercise())
+
+
+def test_migration_fingerprint_change_creates_recovery_point(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path = tmp_path / "fingerprint-change.db"
+    backup_directory = tmp_path / "backups"
+    monkeypatch.setattr(backup.settings, "backup_dir", str(backup_directory))
+
+    async def exercise() -> None:
+        await db.close_db()
+        try:
+            connection = await db.init_db(str(database_path))
+            await connection.execute(
+                "UPDATE app_settings SET value = ? WHERE key = ?",
+                ("0" * 64, "database_migration_fingerprint"),
+            )
+            await connection.commit()
+            await db.close_db()
+
+            await db.init_db(str(database_path))
+            recovery_points = list(
+                backup_directory.glob("ditaknet-pre-migration-*.zip")
+            )
+            assert len(recovery_points) == 1
+            validation = backup.validate_backup_file(recovery_points[0].name)
+            assert validation["backup_origin"] == "pre_migration"
         finally:
             await db.close_db()
 
@@ -86,9 +240,7 @@ def test_init_db_is_idempotent_and_preserves_existing_data(tmp_path: Path) -> No
                 "SELECT code FROM roles ORDER BY code"
             )
 
-            assert [tuple(row) for row in hosts] == [
-                ("persistent-host", "192.0.2.10")
-            ]
+            assert [tuple(row) for row in hosts] == [("persistent-host", "192.0.2.10")]
             assert len(migrations_after_restart) == len(db.MIGRATION_SQL)
             assert len({str(row[0]) for row in migrations_after_restart}) == len(
                 db.MIGRATION_SQL

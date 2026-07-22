@@ -4,6 +4,7 @@ TZ: Etc/UTC
 ditaknet:
   app_base_url: ""
   discovery_dns_servers: ""
+  update_channel: stable
 
 run_as:
   user: 568

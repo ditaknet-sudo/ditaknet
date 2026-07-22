@@ -25,6 +25,8 @@
 {% do c1.environment.add_env("LOG_DIR", "/app/logs") %}
 {% do c1.environment.add_env("BACKUP_DIR", "/app/backups") %}
 {% do c1.environment.add_env("PLUGIN_DIR", "/app/plugins") %}
+{% do c1.environment.add_env("DITAKNET_UPDATE_CHANNEL", values.ditaknet.update_channel) %}
+{% do c1.environment.add_env("DITAKNET_UPDATE_SIGNATURE_REQUIRED", "true") %}
 {% if values.ditaknet.app_base_url %}
   {% do c1.environment.add_env("APP_BASE_URL", values.ditaknet.app_base_url.rstrip("/")) %}
 {% endif %}

@@ -51,12 +51,14 @@ def test_custom_app_bridge_and_host_are_mutually_exclusive() -> None:
         assert service["cap_add"] == ["NET_RAW"]
         assert service["security_opt"] == ["no-new-privileges=true"]
         assert service["pull_policy"] == "missing"
-        assert {
-            mount["target"] for mount in service["volumes"]
-        } == {"/app/data", "/app/logs", "/app/backups", "/app/plugins"}
+        assert {mount["target"] for mount in service["volumes"]} == {
+            "/app/data",
+            "/app/logs",
+            "/app/backups",
+            "/app/plugins",
+        }
         assert all(
-            mount["bind"]["create_host_path"] is False
-            for mount in service["volumes"]
+            mount["bind"]["create_host_path"] is False for mount in service["volumes"]
         )
 
 
@@ -100,8 +102,7 @@ def test_catalog_image_tag_is_not_user_controlled() -> None:
         ROOT / "truenas-catalog/ix-dev/community/ditaknet/questions.yaml"
     ).read_text(encoding="utf-8")
     template = (
-        ROOT
-        / "truenas-catalog/ix-dev/community/ditaknet/templates/docker-compose.yaml"
+        ROOT / "truenas-catalog/ix-dev/community/ditaknet/templates/docker-compose.yaml"
     ).read_text(encoding="utf-8")
 
     assert "image_tag" not in questions
@@ -112,10 +113,7 @@ def test_catalog_image_tag_is_not_user_controlled() -> None:
 
 
 def test_catalog_values_cover_network_storage_and_permission_migration() -> None:
-    directory = (
-        ROOT
-        / "truenas-catalog/ix-dev/community/ditaknet/templates/test_values"
-    )
+    directory = ROOT / "truenas-catalog/ix-dev/community/ditaknet/templates/test_values"
     basic = _yaml(str((directory / "basic-values.yaml").relative_to(ROOT)))
     host = _yaml(str((directory / "host-network-values.yaml").relative_to(ROOT)))
     host_path = _yaml(str((directory / "host-path-values.yaml").relative_to(ROOT)))
@@ -143,9 +141,7 @@ def test_catalog_values_cover_network_storage_and_permission_migration() -> None
 def test_migration_and_rollback_docs_have_required_safety_steps() -> None:
     install = (ROOT / "docs/TRUENAS-INSTALL.md").read_text(encoding="utf-8")
     upgrade = (ROOT / "docs/UPGRADE.md").read_text(encoding="utf-8")
-    safety = (ROOT / "docs/UPDATE_AND_MIGRATION_SAFETY.md").read_text(
-        encoding="utf-8"
-    )
+    safety = (ROOT / "docs/UPDATE_AND_MIGRATION_SAFETY.md").read_text(encoding="utf-8")
 
     assert "568:568" in install
     assert "Create an application backup and a recursive snapshot" in install
@@ -153,5 +149,8 @@ def test_migration_and_rollback_docs_have_required_safety_steps() -> None:
     assert "/health/deep" in upgrade
     assert 'payload["version"] == os.environ["EXPECTED_VERSION"]' in upgrade
     assert "Stop every container" in safety
-    assert "Image-only rollback warning" in safety
+    assert "`image_only`" in safety
+    assert "only accepted policy values are `state_restore_required` and" in safety
+    assert "offline_restore" in safety
+    assert "wal_checkpoint(TRUNCATE)" in safety
     assert "Offline recovery" in safety

@@ -1,14 +1,22 @@
 {
+  "schema_version": 1,
   "channel": "stable",
   "latest_version": "2.0.1",
   "minimum_supported_version": "2.0.0",
   "release_date": "2026-07-12",
-  "release_url": "https://github.com/ditaknet-sudo/ditaknet/releases/tag/v2.0.1",
+  "published_at": "2026-07-12T23:58:11+04:00",
+  "release_url": "https://github.com/ditaknet-sudo/ditaknet/tree/v2.0.1",
   "docker_image": "ghcr.io/ditaknet-sudo/ditaknet:2.0.1",
+  "image_digest": "sha256:6bb7445265099ea310802e48414c196411eb5fa916816fc8f483a754c48ad566",
+  "docker_image_digest": "ghcr.io/ditaknet-sudo/ditaknet@sha256:6bb7445265099ea310802e48414c196411eb5fa916816fc8f483a754c48ad566",
+  "platform_digests": {
+    "linux/amd64": "sha256:6bb7445265099ea310802e48414c196411eb5fa916816fc8f483a754c48ad566"
+  },
+  "source_commit": "fb4d6b8238d31a27379b6610ce27b7b3e59bd560",
   "changelog_url": "https://github.com/ditaknet-sudo/ditaknet/blob/main/CHANGELOG.md",
   "critical": false,
   "checksums": {
-    "docker_image_hint": "Prefer the GHCR image digest published with the release; verify after pull with docker image inspect."
+    "oci_manifest": "sha256:6bb7445265099ea310802e48414c196411eb5fa916816fc8f483a754c48ad566"
   },
   "message": {
     "hy": "Հասանելի է DitakNet 2.0.1 թարմացումը",
@@ -16,19 +24,19 @@
     "ru": "Доступно обновление DitakNet 2.0.1"
   },
   "upgrade_hint": {
-    "hy": "Ավտոմատ թարմացում չկա։ Քաշեք հստակ version tag՝ ghcr.io/ditaknet-sudo/ditaknet:2.0.1, ապա redeploy արեք։ Մի օգտագործեք latest production-ում։",
-    "en": "No automatic update. Pull the exact version tag ghcr.io/ditaknet-sudo/ditaknet:2.0.1, then redeploy. Do not use latest in production.",
-    "ru": "Автообновления нет. Скачайте точный тег ghcr.io/ditaknet-sudo/ditaknet:2.0.1 и выполните redeploy. Не используйте latest в production."
+    "hy": "Ավտոմատ թարմացում չկա։ Ստեղծեք backup, քաշեք ghcr.io/ditaknet-sudo/ditaknet:2.0.1 exact tag-ը և կատարեք redeploy։ Production-ում latest մի օգտագործեք։",
+    "en": "There is no automatic update. Create a backup, pull the exact tag ghcr.io/ditaknet-sudo/ditaknet:2.0.1, then redeploy. Do not use latest in production.",
+    "ru": "Автообновления нет. Создайте резервную копию, скачайте точный тег ghcr.io/ditaknet-sudo/ditaknet:2.0.1 и выполните redeploy. Не используйте latest в production."
   },
   "version": "2.0.1",
   "image_tag": "2.0.1",
   "image": "ghcr.io/ditaknet-sudo/ditaknet:2.0.1",
-  "release_notes": "DitakNet 2.0.1 — safer error logging, Request ID correlation, TrueNAS storage checks, CI smoke gates.",
+  "release_notes": "DitakNet 2.0.1 — safer error logging, Request ID correlation, TrueNAS storage checks and CI smoke gates.",
   "announcements": [
     {
       "id": "release-2-0-1",
       "title": "DitakNet 2.0.1",
-      "message": "Pull ghcr.io/ditaknet-sudo/ditaknet:2.0.1, then restart. Create a backup first. Prefer version tags over latest in production.",
+      "message": "Create a backup, pull ghcr.io/ditaknet-sudo/ditaknet:2.0.1, then restart. Prefer exact version tags over latest in production.",
       "level": "info"
     }
   ]
