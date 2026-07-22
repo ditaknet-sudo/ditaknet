@@ -343,6 +343,29 @@
   փորձը դեռ pending է, քանի որ այս workstation-ում TrueNAS host կամ ZFS test
   pool հասանելի չէ։ Այն չի փոխարինվում միայն Compose render-ով։
 
+### 2026-07-22 — Signed `2.0.2` update-receive E2E
+
+- Առանձին HTTPS feed/container, self-contained test CA և ephemeral Ed25519 key-ով
+  schema-v2 stable manifest ստեղծվեց `2.0.2` թիրախի համար։ Running `2.0.1` test
+  server-ը manifest-ը ստացավ, signature-ը հաստատեց և վերադարձրեց
+  `update_available=true`, `manifest_trusted=true`, `show_banner=true` և
+  `update_handoff_available=true`։
+- Feed outage/restart փորձը բացահայտեց persisted backoff edge-case․ առաջին
+  network failure-ը handoff-ը փակում էր, բայց հաջորդ app restart-ը կարող էր հին
+  trusted cache-ը կրկին actionable դարձնել։ Failure reason-ը հիմա durable է,
+  backoff cache-ը միշտ վերադարձվում է որպես `cached_after_error`, և handoff-ը
+  restart-ներից հետո նույնպես fail-closed է։
+- Ավելացվեց regression test, ամբողջ suite-ը դարձավ **217 passed, 0 failed,
+  1 local warning**։ Ruff, compile, release consistency և Docker E2E positive/
+  feed-down/restart-backoff checks-ը հաջող են։
+- Test containers/volumes/network/images-ը, TLS/signing նյութերը և Python test
+  cache-երը վերջում ջնջվեցին։ Գործող `ditaknet-monitoring` container-ը մնաց
+  healthy և նրա runtime bind mounts-ը չփոփոխվեցին։
+- `2.0.2`-ը այս ստուգման ընթացքում միայն signed test target էր․ production tag,
+  GHCR image, GitHub Release կամ official feed չի հրապարակվել։ Դրանց համար դեռ
+  պահանջվում են production public key, protected signing secret և հաստատված
+  release operation։
+
 ## Հաջորդ հաշվետվություն
 
 Հաջորդ քայլը TrueNAS SCALE-ի մեկուսացված test host/pool-ի վրա install → backup →

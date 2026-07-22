@@ -39,6 +39,7 @@ _KEY_ETAG = "update_manifest_etag"
 _KEY_PAYLOAD = "update_last_payload_json"
 _KEY_FAILURES = "update_consecutive_failures"
 _KEY_BACKOFF_UNTIL = "update_backoff_until"
+_KEY_LAST_ERROR = "update_last_error"
 _KEY_DISMISSED = "update_dismissed_version"
 _KEY_SNOOZE_UNTIL = "update_snooze_until"
 _KEY_ENABLED_OVERRIDE = "update_check_enabled_override"  # "", "true", "false"
@@ -799,6 +800,7 @@ async def _load_state() -> dict[str, Any]:
         "payload": payload,
         "failures": max(0, failures),
         "backoff_until": await db.get_app_setting(_KEY_BACKOFF_UNTIL, "") or None,
+        "last_error": await db.get_app_setting(_KEY_LAST_ERROR, "") or None,
         "dismissed_version": await db.get_app_setting(_KEY_DISMISSED, "") or None,
         "snooze_until": await db.get_app_setting(_KEY_SNOOZE_UNTIL, "") or None,
         "replay_state": replay_state,
@@ -811,6 +813,7 @@ async def _save_success(manifest: dict[str, Any], etag: str | None) -> None:
 
     related_settings = {
         _KEY_PAYLOAD: json.dumps(manifest, ensure_ascii=False),
+        _KEY_LAST_ERROR: "",
     }
     if (
         manifest.get("manifest_trusted") is True
@@ -906,9 +909,14 @@ async def _save_failure(message: str) -> None:
     base = min(_MAX_BACKOFF_SECONDS, 300 * (2 ** min(failures - 1, 8)))
     jitter = random.uniform(0, min(120.0, base * 0.2))
     until = datetime.now(UTC) + timedelta(seconds=base + jitter)
-    await db.set_app_setting(_KEY_LAST_CHECKED, _now_iso())
-    await db.set_app_setting(_KEY_FAILURES, str(failures))
-    await db.set_app_setting(_KEY_BACKOFF_UNTIL, until.isoformat())
+    await db.set_app_settings_atomic(
+        {
+            _KEY_LAST_CHECKED: _now_iso(),
+            _KEY_FAILURES: str(failures),
+            _KEY_BACKOFF_UNTIL: until.isoformat(),
+            _KEY_LAST_ERROR: message[:4096],
+        }
+    )
     logger.debug(
         "Update check failed (#{}) — backoff until {}: {}",
         failures,
@@ -1179,9 +1187,14 @@ async def _check_for_updates_locked(
     )
     if not force and _in_backoff(state) and stored_is_actionable:
         cached = dict(state["payload"])
+        cached["source"] = "cached_after_error"
+        cached["status"] = "error"
+        cached["error"] = state.get("last_error") or (
+            "Update check is in backoff after a previous failure"
+        )
+        cached["last_checked_at"] = state.get("last_checked_at") or _now_iso()
         cached["dismissed_version"] = state.get("dismissed_version")
         cached["snooze_until"] = state.get("snooze_until")
-        cached["last_checked_at"] = state.get("last_checked_at")
         cached["last_success_at"] = state.get("last_success_at")
         return enrich_update_status(cached, lang=lang)
 

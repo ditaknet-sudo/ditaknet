@@ -415,6 +415,58 @@ def test_required_policy_rejects_304_from_previously_unsigned_cache(
     assert "304" in result["error_message"]
 
 
+def test_persisted_failure_backoff_never_reenables_cached_handoff_after_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_url = "https://example.invalid/stable.json"
+    monkeypatch.setattr(updates, "_is_check_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(updates.settings, "app_update_signature_required", True)
+    monkeypatch.setattr(updates.settings, "app_update_manifest_signing_key", "")
+    monkeypatch.setattr(updates.settings, "app_update_channel", "stable")
+    monkeypatch.setattr(updates.settings, "app_update_manifest_url", manifest_url)
+    monkeypatch.setattr(updates.settings, "app_update_check_url", "")
+    monkeypatch.setattr(updates.settings, "app_latest_version", "")
+    monkeypatch.setattr(updates.settings, "app_latest_image_tag", "")
+    policy = updates._trust_policy_id(
+        channel="stable",
+        manifest_url=manifest_url,
+    )
+    cached = {
+        "trust_policy_id": policy,
+        "manifest_trusted": True,
+        "schema_version": 2,
+        "source": "manifest",
+        "status": "update_available",
+        "latest_version": "2.0.2",
+        "update_available": True,
+        "channel": "stable",
+        "docker_image": "ghcr.io/ditaknet-sudo/ditaknet:2.0.2",
+        "image_digest": "sha256:" + "a" * 64,
+    }
+    state = _empty_state(cached)
+    state.update(
+        {
+            "failures": 1,
+            "backoff_until": "2999-01-01T00:00:00+00:00",
+            "last_error": "RuntimeError: feed unavailable",
+        }
+    )
+    monkeypatch.setattr(updates, "_load_state", AsyncMock(return_value=state))
+    fetch = AsyncMock()
+    monkeypatch.setattr(updates, "_fetch_json", fetch)
+    updates._CACHE.update({"expires_at": 0.0, "payload": None})
+
+    result = asyncio.run(updates.check_for_updates(force=False))
+
+    fetch.assert_not_awaited()
+    assert result["status"] == "error"
+    assert result["source"] == "cached_after_error"
+    assert result["error_message"] == "RuntimeError: feed unavailable"
+    assert result["update_available"] is True
+    assert result["manifest_trusted"] is True
+    assert result["update_handoff_available"] is False
+
+
 def test_keyring_policy_change_drops_old_etag_and_revalidates_manifest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
