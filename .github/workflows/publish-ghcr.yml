@@ -654,7 +654,7 @@ jobs:
 
       - name: Store the smoke-tested release images
         if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           # run_id remains stable for both "re-run failed jobs" and "re-run
           # all jobs". The latter safely replaces the prior producer artifact.
@@ -1083,7 +1083,7 @@ jobs:
           echo "digest=$PUBLISHED_DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Store signed metadata and release assets
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ditaknet-release-metadata-${{ github.run_id }}
           path: |
