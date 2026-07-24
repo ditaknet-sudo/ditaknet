@@ -1,0 +1,44 @@
+{
+  "changelog_url": "https://github.com/ditaknet-sudo/ditaknet/blob/v2.0.2/release/notes/2.0.2.md",
+  "channel": "stable",
+  "compatibility": {
+    "allow_major_upgrade": false,
+    "backup_format_version": 2,
+    "maximum_current_version": "2.0.1",
+    "minimum_current_version": "2.0.0",
+    "requires_backup": true,
+    "rollback_policy": "state_restore_required",
+    "target_schema_revision": 1
+  },
+  "critical": false,
+  "docker_image": "ghcr.io/ditaknet-sudo/ditaknet:2.0.2",
+  "image_digest": "sha256:f649afda333a925ceaaa86177e398dd35fc21ab0b1c43b0744ebf405b0c71070",
+  "message": {
+    "en": "DitakNet 2.0.2 is available",
+    "hy": "Հասանելի է DitakNet 2.0.2 թարմացումը",
+    "ru": "Доступно обновление DitakNet 2.0.2"
+  },
+  "platform_digests": {
+    "linux/amd64": "sha256:19a71dd2a2674c827f9d5fedcc73179fbe46281c18240d21b1a2883596dac079",
+    "linux/arm64": "sha256:9c0fde603bfc654fb331f1ae6fe5cca4016c28626ae6ae89de9becd3b4e37909"
+  },
+  "published_at": "2026-07-24T07:18:46Z",
+  "release_notes": "# DitakNet 2.0.2\n\n## Highlights\n\n- Introduces immutable, signed update metadata for future stable and beta\n  releases, bound to the exact GHCR multi-architecture image digests.\n- Adds hardened Docker and TrueNAS deployment definitions with a non-root\n  `568:568` runtime, read-only root filesystem, minimal capabilities, bounded\n  processes, persistent storage contracts, and deep health evidence.\n- Adds backup-first update preflight and offline-only restore/rollback tooling.\n  DitakNet notifies and prepares an update; it never replaces its own Docker\n  container or TrueNAS App.\n\n## Changed\n\n- `VERSION` is now the canonical source/build version. The root\n  `update-manifest.json` remains the immutable schema-v1 record for the legacy\n  `2.0.1` amd64 image.\n- Fresh Docker Compose installs use four Docker-managed named volumes. Existing\n  bind-mount installations must explicitly preserve all four old paths before\n  redeployment.\n- Official images are built and smoke-tested independently for `linux/amd64`\n  and `linux/arm64`, then published as one exact SemVer multi-architecture\n  index.\n- Backup archives use format 2 with member checksums, bounded validation,\n  SQLite integrity checks, and update/migration operation context.\n\n## Fixed\n\n- Update verification now fails closed for signature, channel, digest,\n  compatibility, replay, cache, and network failures.\n- A feed failure followed by an application restart no longer re-enables a\n  stale cached update handoff during persisted backoff.\n- Database startup rejects future schemas, unsafe downgrades, and migration\n  fingerprint drift before persistent state can be mutated.\n- SQLite backup and restore handling is WAL-safe, bounded, and crash-aware.\n- Session-authenticated mutations consistently enforce CSRF protection.\n- Update UI content is safely rendered, and release links are restricted to\n  approved HTTPS destinations.\n- Scheduler retry, TCP refused-connection handling, health reporting, locale\n  consistency, and migration idempotency regressions were corrected.\n\n## Security and packaging\n\n- Runtime dependencies and CI dependencies are SHA-256 hash locked.\n- Release images are vulnerability-scanned and carry verified provenance plus\n  per-platform SPDX SBOM attestations.\n- The release workflow refuses to mutate GHCR until the protected channel key\n  matches the public key committed in the tagged source.\n- Exact release tags are immutable; the workflow never publishes or moves\n  `latest`.\n\n## Upgrade from 2.0.1\n\nThe published `2.0.1` image predates the signed schema-v2 updater and has no\nofficial update feed configured by default. It cannot automatically discover\nor install `2.0.2`. Treat this first transition as a one-time manual bootstrap:\n\n1. preserve the exact Data, Logs, Backups, and Plugins mounts;\n2. create and validate a backup, plus a storage snapshot where available;\n3. stop the legacy container explicitly;\n4. select the exact `2.0.2` image and redeploy with the same mounts;\n5. require `/health/deep` to pass before completing the change.\n\nFrom `2.0.2` onward, the application can automatically check the signed\nchannel feed and display a trusted update offer. Update application remains an\nadministrator-controlled external Docker/TrueNAS redeploy after the in-app\nbackup-first preflight; unattended self-update is intentionally disabled.\n\nRollback is state-aware. Do not switch only the image tag after `2.0.2` has\nwritten the database. Stop the application and restore the validated\npre-update state using the documented offline process before selecting the old\nimage.\n\n## Validation scope\n\n- Automated Python, security, release-consistency, backup/restore, update,\n  Docker hardening, and TrueNAS packaging tests are required.\n- Both `linux/amd64` and `linux/arm64` release images must pass runtime smoke,\n  health, persistence, scan, provenance, and SBOM gates in GitHub Actions.\n- TrueNAS Compose and catalog variants are statically validated and rendered\n  against a pinned official TrueNAS app-library revision. A real TrueNAS SCALE\n  install/upgrade/rollback acceptance test remains separate hardware evidence\n  and must not be implied by catalog rendering alone.\n\nFull technical history is in\n[`CHANGELOG.md`](https://github.com/ditaknet-sudo/ditaknet/blob/v2.0.2/CHANGELOG.md).\nOperational steps are in\n[`docs/UPGRADE.md`](https://github.com/ditaknet-sudo/ditaknet/blob/v2.0.2/docs/UPGRADE.md)\nand\n[`docs/UPDATE_AND_MIGRATION_SAFETY.md`](https://github.com/ditaknet-sudo/ditaknet/blob/v2.0.2/docs/UPDATE_AND_MIGRATION_SAFETY.md).",
+  "release_url": "https://github.com/ditaknet-sudo/ditaknet/releases/tag/v2.0.2",
+  "schema_version": 2,
+  "sequence": 14,
+  "signatures": [
+    {
+      "algorithm": "ed25519",
+      "key_id": "stable-release-v1",
+      "value": "rEsN8WDHJ4YGloYKAcCugCwujAYPSThKGxSgTsUf3k6fBl8CWPrkoT/yufifb8YHZxjNl+sxsFTU7Fn6lCwSAQ=="
+    }
+  ],
+  "source_commit": "80fc7f7ccbcdd96307caf5e63976ebae5e3ae736",
+  "upgrade_hint": {
+    "en": "Complete the backup-first preflight before changing the exact image tag.",
+    "hy": "Exact image tag-ը փոխելուց առաջ ավարտեք backup-first preflight-ը։",
+    "ru": "Перед сменой точного тега образа выполните backup-first preflight."
+  },
+  "version": "2.0.2"
+}
