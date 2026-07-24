@@ -53,6 +53,27 @@ def test_all_release_version_sources_match() -> None:
     assert versions == {name: expected for name in versions}, versions
 
 
+def test_current_version_has_permanent_release_notes() -> None:
+    expected = _read("VERSION").strip()
+    relative = f"release/notes/{expected}.md"
+    notes = _read(relative)
+
+    assert notes.splitlines()[0] == f"# DitakNet {expected}"
+    assert "## Highlights" in notes
+    assert "## Upgrade from" in notes
+    assert "## Validation scope" in notes
+    assert "UI/design changes" in _read("release/notes/README.md")
+
+    workflow = _read(".github/workflows/publish-ghcr.yml")
+    assert (
+        '--release-notes-file "release/notes/$RELEASE_VERSION.md"'
+        in workflow
+    )
+    assert 'manifest["release_notes"].strip()' in workflow
+    assert "existing GitHub Release notes differ" in workflow
+    assert "GitHub Release exists without the immutable GHCR image" in workflow
+
+
 def test_production_templates_do_not_default_to_latest() -> None:
     expected = _read("VERSION").strip()
 
@@ -118,6 +139,21 @@ def test_public_manifest_uses_stable_exact_image() -> None:
     )
     assert minimum <= latest
     assert latest <= source
+
+
+def test_legacy_root_manifest_remains_exact_201_evidence() -> None:
+    manifest = json.loads(_read("update-manifest.json"))
+
+    assert manifest["schema_version"] == 1
+    assert manifest["latest_version"] == "2.0.1"
+    assert manifest["source_commit"] == "fb4d6b8238d31a27379b6610ce27b7b3e59bd560"
+    assert (
+        manifest["image_digest"]
+        == "sha256:6bb7445265099ea310802e48414c196411eb5fa916816fc8f483a754c48ad566"
+    )
+    assert manifest["platform_digests"] == {
+        "linux/amd64": manifest["image_digest"]
+    }
 
 
 def _manifest_at(version: str) -> str:

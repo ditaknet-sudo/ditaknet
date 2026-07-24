@@ -5,26 +5,32 @@ immutable, exact-version image from GHCR; do not build source on TrueNAS and do
 not use a floating tag.
 
 ```text
-ghcr.io/ditaknet-sudo/ditaknet:2.0.1
+ghcr.io/ditaknet-sudo/ditaknet:2.0.2
 ```
 
-This tag is shown because it matches the root legacy schema-v1 manifest, but it
-is an amd64-only artifact created before the Phase 3/4 hardening and signed
-update work. Do not claim that it contains later source changes or use it for
-the schema-v2 managed-update handoff. For a new production deployment using the
-complete hardened image contract, wait for and verify the next SemVer release,
-then replace every example pin consistently.
+`2.0.2` is the first image produced by the hardened multi-architecture and
+signed-release workflow. Before installation, verify the GitHub Release, exact
+GHCR tag, and signed `update-manifest.json` asset. The older `2.0.1` tag remains
+a legacy amd64-only artifact and must not be treated as containing these later
+changes.
 
 Before installation, confirm that this exact tag exists and that the GHCR
 package is public:
 
 ```bash
-docker pull ghcr.io/ditaknet-sudo/ditaknet:2.0.1
+docker pull ghcr.io/ditaknet-sudo/ditaknet:2.0.2
 ```
 
 If the pull returns `manifest unknown`, the release image has not been
 published. Do not substitute `latest`; a historical alias may exist, but it is
 unsupported and the current release workflow never creates or moves it.
+
+An existing `2.0.1` installation requires a one-time manual bootstrap because
+that legacy image has no official update feed configured by default and cannot
+verify the new signed preflight. Preserve all four mount paths, back up and
+snapshot the application, explicitly stop the old container, then redeploy the
+exact `2.0.2` tag with the same storage. Signed automatic update offers apply
+from `2.0.2` onward; DitakNet never replaces the TrueNAS App by itself.
 
 ## 1. Create production datasets
 

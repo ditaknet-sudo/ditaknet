@@ -802,6 +802,20 @@ jobs:
           echo "exists=false" >> "$GITHUB_OUTPUT"
           echo "digest=" >> "$GITHUB_OUTPUT"
 
+      - name: Reject a Release without its immutable image
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.quality.outputs.version }}
+          EXISTING_TAG: ${{ steps.existing.outputs.exists }}
+        run: |
+          set -euo pipefail
+          if gh release view "v$RELEASE_VERSION" >/dev/null 2>&1 && \
+             [[ "$EXISTING_TAG" != "true" ]]; then
+            echo "GitHub Release exists without the immutable GHCR image; refusing registry mutation." >&2
+            exit 1
+          fi
+
       - name: Publish exact per-architecture images and manifest list
         id: push
         env:
@@ -984,6 +998,7 @@ jobs:
             --published-at "$PUBLISHED_AT" \
             --sequence "$RELEASE_SEQUENCE" \
             --policy release/update-policy.json \
+            --release-notes-file "release/notes/$RELEASE_VERSION.md" \
             --output "$OUTPUT_ROOT/update-manifest.unsigned.json"
           python scripts/release_manifest.py sign \
             --input "$OUTPUT_ROOT/update-manifest.unsigned.json" \
@@ -1178,7 +1193,9 @@ jobs:
           compatibility = manifest["compatibility"]
           version = manifest["version"]
           lines = [
-              f"# DitakNet {version}",
+              manifest["release_notes"].strip(),
+              "",
+              "## Verified release identity",
               "",
               f"- Channel: `{manifest['channel']}`",
               f"- Image: `{manifest['docker_image']}`",
@@ -1192,7 +1209,7 @@ jobs:
               "",
               "Run DitakNet's backup-first admin preflight before redeploying.",
               "For state_restore_required releases, reverting only the image is unsafe; restore the validated pre-update state.",
-              f"Known changes and issues: https://github.com/ditaknet-sudo/ditaknet/blob/v{version}/CHANGELOG.md",
+              f"Versioned source notes: {manifest['changelog_url']}",
           ]
           Path(sys.argv[2]).write_text("\n".join(lines) + "\n", encoding="utf-8")
           PY
@@ -1204,6 +1221,27 @@ jobs:
             fi
             gh release create "${create_args[@]}"
           fi
+
+          CURRENT_RELEASE="$RUNNER_TEMP/current-release.json"
+          gh release view "$TAG" \
+            --json name,body,isPrerelease \
+            > "$CURRENT_RELEASE"
+          python - "$CURRENT_RELEASE" "$NOTES" "$RELEASE_VERSION" "$RELEASE_CHANNEL" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          release = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected_body = Path(sys.argv[2]).read_text(encoding="utf-8")
+          version, channel = sys.argv[3:]
+          normalize = lambda value: str(value or "").replace("\r\n", "\n").rstrip()
+          if release["name"] != f"DitakNet {version}":
+              raise SystemExit("existing GitHub Release title differs")
+          if normalize(release["body"]) != normalize(expected_body):
+              raise SystemExit("existing GitHub Release notes differ")
+          if bool(release["isPrerelease"]) != (channel == "beta"):
+              raise SystemExit("existing GitHub Release prerelease state differs")
+          PY
 
           upload_or_verify() {
             local path="$1"

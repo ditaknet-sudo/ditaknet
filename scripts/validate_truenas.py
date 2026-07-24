@@ -29,7 +29,9 @@ OFFICIAL_COMMIT = "f733713ecfda1d683043775e6d9cc8f09545e1b3"
 OFFICIAL_HASHES = (
     f"https://raw.githubusercontent.com/truenas/apps/{OFFICIAL_COMMIT}/library/hashes.yaml"
 )
-SEMVER = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
+SOURCE_VERSION = re.compile(
+    r"[0-9]+\.[0-9]+\.[0-9]+(?:-(?:beta|rc)\.[0-9]+)?"
+)
 WRITABLE_TARGETS = {"/app/data", "/app/logs", "/app/backups", "/app/plugins"}
 
 
@@ -183,16 +185,15 @@ def validate(*, check_upstream: bool = False, compose_config: bool = False) -> l
     )
 
     try:
-        manifest = _json("update-manifest.json")
-        version = manifest["latest_version"]
-        if not isinstance(version, str) or not SEMVER.fullmatch(version):
-            raise ValueError("latest_version is not stable SemVer")
+        version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        if not isinstance(version, str) or not SOURCE_VERSION.fullmatch(version):
+            raise ValueError("VERSION is not a supported stable/beta/rc SemVer")
         app = _yaml(CATALOG / "app.yaml")
         values = _yaml(CATALOG / "ix_values.yaml")
         lock = _json("truenas-catalog/upstream-library.json")
 
         if app.get("app_version") != version:
-            errors.append("catalog app_version does not match update-manifest.json")
+            errors.append("catalog app_version does not match VERSION")
         image = values.get("images", {}).get("image", {})
         if image != {"repository": IMAGE_REPOSITORY, "tag": version}:
             errors.append("catalog image repository/tag does not match the stable release")

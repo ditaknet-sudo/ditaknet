@@ -13,16 +13,16 @@ container. The WebUI and health endpoint listen on container port `5833`.
 Production deployments pin one exact image:
 
 ```text
-ghcr.io/ditaknet-sudo/ditaknet:2.0.1
+ghcr.io/ditaknet-sudo/ditaknet:2.0.2
 ```
 
-`2.0.1` matches the root legacy schema-v1 manifest but is an amd64-only
-artifact; later Phase 3/4 source changes are not retroactively present in it.
-It cannot authorize the signed managed-update preflight. The complete hardened
-production artifact must be published under a new SemVer and verified before
-these defaults are advanced.
+`2.0.2` is the first version prepared by the complete hardened,
+multi-architecture, signed-release process. Confirm its GitHub Release, GHCR
+digest, supported platforms, and signed manifest before deployment. The root
+schema-v1 manifest and `2.0.1` image remain historical amd64-only evidence and
+cannot authorize the signed managed-update preflight.
 
-Git tag `v2.0.1` corresponds to image tag `2.0.1`. The current workflow does not
+Git tag `v2.0.2` corresponds to image tag `2.0.2`. The current workflow does not
 publish or move a floating GHCR `latest` tag. A historical alias may exist, but
 it is unsupported. A restart should use the locally cached exact image; an
 upgrade explicitly selects and pulls a new SemVer and verifies its digest.
@@ -102,9 +102,11 @@ DITAKNET_UPDATE_CHANNEL=stable
 
 Official update checks default to signature-required, channel-scoped schema-v2
 metadata. `stable` and `beta` have separate feeds and Ed25519 keys. The
-committed keyring is currently empty until external protected-environment keys
-and the first new SemVer release are provisioned, so Phase 4 handoff remains
-fail-closed rather than accepting the legacy schema-v1 feed.
+committed stable keyring contains only the public `stable-release-v1` trust
+anchor; the private key is stored outside the repository in the protected
+stable release environment. Beta remains fail-closed until its independent key
+is provisioned. Legacy `2.0.1` requires one manual bootstrap to `2.0.2`; signed
+update offers apply from `2.0.2` onward and never self-redeploy the App.
 
 Terminate TLS at a trusted reverse proxy and restrict proxy access to the
 intended networks. Do not expose the unauthenticated setup flow to the public

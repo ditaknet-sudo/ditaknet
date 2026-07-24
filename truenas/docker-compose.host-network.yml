@@ -10,7 +10,7 @@
 
 services:
   ditaknet:
-    image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-2.0.1}
+    image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-2.0.2}
     pull_policy: missing
     restart: unless-stopped
     init: true

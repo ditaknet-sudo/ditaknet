@@ -8,8 +8,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+No changes yet.
+
+## [2.0.2] - 2026-07-24
+
 ### Changed
 
+- Added required per-version release notes under `release/notes/`; the complete
+  note is now embedded in signed update metadata and the GitHub Release body.
 - Made `VERSION` the canonical source version while keeping the root
   `update-manifest.json` as a schema-v1 legacy record for the published `2.0.1`
   amd64 artifact.
@@ -26,6 +32,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Kept cached update handoff fail-closed across application restarts after a
+  feed failure by persisting the failure state through backoff.
 - Made official update verification fail closed by default across network,
   signature, channel, cache-policy, digest, and replay failures, without an
   unsigned GitHub Releases fallback.
@@ -73,6 +81,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Provisioned the `stable-release-v1` public Ed25519 trust anchor; its matching
+  private key remains outside the repository in the protected stable release
+  environment.
 - Added strict schema-v2 `stable` and `beta` update manifests with
   channel-scoped Ed25519 key rotation, exact GHCR index and
   `linux/amd64`/`linux/arm64` digest binding, signed compatibility contracts,

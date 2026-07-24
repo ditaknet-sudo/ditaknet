@@ -64,18 +64,20 @@ exports.
 
 ## Version and updates
 
-Current app version: **2.0.1**.
+Current app version: **2.0.2**.
 
 - Pushing code to GitHub does **not** auto-update running customer servers.
 - The existing `ghcr.io/ditaknet-sudo/ditaknet:2.0.1` image is a legacy,
   single-architecture `linux/amd64` artifact. It predates the Phase 3/4
   hardening and signed-update work and must not be overwritten. The root
   `update-manifest.json` is its legacy schema-v1 feed, not a Phase 4 release.
-- The next release must use a new SemVer. The release workflow builds and tests
-  `linux/amd64` and `linux/arm64`, publishes an immutable exact tag, records the
-  index and child-image digests, verifies OCI provenance/SBOM attestations,
-  publishes a signed manifest with the GitHub Release, and promotes the selected
-  channel feed last.
+- Version `2.0.2` is the first release prepared by the hardened workflow. It
+  builds and tests `linux/amd64` and `linux/arm64`, publishes an immutable exact
+  tag, records the index and child-image digests, verifies OCI
+  provenance/SBOM attestations, publishes a signed manifest with the GitHub
+  Release, and promotes the selected channel feed last. Verify that all three
+  public artifacts exist before installing; a source version alone is not a
+  published release.
 - Stable and beta checks use separate schema-v2 manifests signed with
   channel-scoped Ed25519 keys. Verification is fail-closed by default and the
   signed metadata binds the exact version to the GHCR index/platform digests,
@@ -85,14 +87,22 @@ Current app version: **2.0.1**.
   `image_only` is rejected because an old image cannot safely consume state
   written under the newer database writer guard, and `unsupported` blocks the
   managed preflight.
-- The committed public-key ring is intentionally empty until the external
-  protected-environment keys/secrets and update-feed branch protection are
-  provisioned. Until then no Phase 4 update handoff can be trusted or released.
+- The committed stable keyring contains only the public
+  `stable-release-v1` trust anchor. Its private key is never committed and is
+  held in the protected `stable-release` GitHub environment. Beta remains
+  fail-closed until a separate beta key is intentionally provisioned.
+- The legacy `2.0.1` image has no official update URL configured by default and
+  cannot use the new signed preflight. Its first move to `2.0.2` is a manual
+  bootstrap that preserves all four mounts. From `2.0.2` onward, DitakNet
+  checks the signed channel feed and offers trusted updates automatically.
 - An administrator must complete the in-app preflight by typing exact
   `UPDATE X.Y.Z`. DitakNet then re-fetches the signed manifest, checks
   compatibility, creates and validates a target-bound backup, and issues a
   revalidated two-hour receipt with Docker/TrueNAS instructions. DitakNet never
   redeploys its own container.
+- Every published version has permanent notes under
+  [`release/notes/`](release/notes/); even small fixes and UI/design changes
+  must be recorded there before the tag can pass CI.
 - A historical GHCR `:latest` alias may exist, but it is unsupported and the
   current workflow never creates or moves it. Always pin an exact SemVer and
   verify its digest.

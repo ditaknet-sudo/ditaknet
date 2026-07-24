@@ -43,6 +43,7 @@ def test_web_process_owns_data_lock_before_opening_sqlite() -> None:
 
 def test_root_compose_applies_minimal_runtime_privileges() -> None:
     compose = _read("docker-compose.yml")
+    version = _read("VERSION").strip()
 
     assert re.search(
         r"image:\s*ghcr\.io/ditaknet-sudo/ditaknet:\$\{DITAKNET_VERSION:-\d+\.\d+\.\d+\}",
@@ -50,7 +51,7 @@ def test_root_compose_applies_minimal_runtime_privileges() -> None:
     )
     assert "build:" not in compose
     assert re.search(r"^\s+pull_policy:\s*missing\s*$", compose, re.MULTILINE)
-    assert compose.count("${DITAKNET_VERSION:-2.0.1}") == 4
+    assert compose.count(f"${{DITAKNET_VERSION:-{version}}}") == 4
     assert "${DITAKNET_BIND_ADDRESS:-0.0.0.0}:${DITAKNET_PORT:-5833}:5833" in compose
     for name, volume in (
         ("DATA", "ditaknet-data"),

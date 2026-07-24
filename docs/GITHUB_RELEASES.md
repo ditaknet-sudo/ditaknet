@@ -28,15 +28,14 @@ does not authorize the schema-v2 managed update handoff. Do not describe later
 properties of that legacy artifact. A subsequent release must use a new SemVer
 and report only the platforms actually built and tested.
 
-Phase 4 code is currently unreleased. The committed channel keyring contains
-empty `stable` and `beta` maps, so a release intentionally fails closed before
-any registry mutation. Before the first new release, provision the channel
-public keys in `ditaknet/core/update_signing_public_keys.json`, store only the
-matching private keys as `UPDATE_STABLE_ED25519_PRIVATE_KEY_B64` and
-`UPDATE_BETA_ED25519_PRIVATE_KEY_B64` in the `stable-release` and
-`beta-release` protected GitHub environments, and protect the `update-feed`
-branch. The expected initial public-key IDs are `stable-release-v1` and
-`beta-release-v1`. Never commit a private signing key.
+Version `2.0.2` is the first source prepared for the Phase 4 release process.
+The committed keyring contains the stable public key
+`stable-release-v1`, while its matching
+`UPDATE_STABLE_ED25519_PRIVATE_KEY_B64` is stored only in the
+`stable-release` GitHub environment. Beta intentionally remains fail-closed
+until `beta-release-v1` and its independent protected secret are provisioned.
+The release job verifies that public/private pair before any registry mutation.
+Never commit a private signing key.
 
 ## Pre-tag checklist
 
@@ -45,8 +44,10 @@ branch. The expected initial public-key IDs are `stable-release-v1` and
 2. Update the canonical `VERSION` and every release-controlled source. Treat
    the root schema-v1 `update-manifest.json` as a legacy compatibility record,
    not the schema-v2 channel feed.
-3. Finalize release notes, supported upgrade paths, compatibility warnings, and
-   rollback requirements.
+3. Finalize `release/notes/X.Y.Z.md`, including every user-visible fix or
+   UI/design change, supported upgrade paths, compatibility warnings, and
+   rollback requirements. CI requires that exact file and the release workflow
+   embeds it in both signed metadata and the GitHub Release.
 4. Review `release/update-policy.json`: direct-upgrade range, target database
    schema, backup format, major-version rule, and rollback policy. Only
    `state_restore_required` or `unsupported` is valid; `image_only` must be
@@ -62,8 +63,10 @@ branch. The expected initial public-key IDs are `stable-release-v1` and
    for legacy/pre-lock images, checkpoint/fsync/single-replace crash boundary,
    and confirm the web/setup paths cannot replace a live database.
 8. Confirm the registry either has no target exact tag or, for an authorized
-   repair run, resolves to the exact digest produced by the same source. A
-   different existing digest is a hard failure.
+   repair run, that the existing digest carries verified provenance for the
+   exact tagged source/workflow plus the required platform/SBOM attestations.
+   Repair deliberately does not assume a later apt-based rebuild is
+   byte-reproducible.
 
 Recommended local, non-deployment checks:
 
@@ -130,12 +133,14 @@ the workflow fails before the exact GHCR tag is finalized, fix the cause and
 rerun against the same reviewed tag. Staging references are not customer
 releases.
 
-If the exact image tag already exists and its digest exactly matches the
-reconstructed, tested staging index, the workflow may resume only the missing
-metadata steps: attestations, signed manifest, GitHub Release asset, and channel
-promotion. If the digest differs, the workflow refuses repair and must not
-overwrite the tag. Channel promotion is last, so a partial publication cannot
-advertise metadata whose image/Release evidence is incomplete.
+If the exact image tag already exists, repair mode does not reconstruct it or
+compare it to a later apt-based build. It reads the immutable published index
+and proceeds only after its provenance is bound to the exact tagged source and
+release workflow and both platform/SBOM attestations verify. It may then resume
+the missing signed manifest, GitHub Release asset, and channel promotion
+steps without mutating the registry. Channel promotion is last, so a partial
+publication cannot advertise metadata whose image/Release evidence is
+incomplete.
 
 If published bytes are wrong, revoke/deprecate that version and issue a new
 SemVer. Never silently replace an immutable customer release.

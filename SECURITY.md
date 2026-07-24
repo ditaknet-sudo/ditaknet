@@ -2,9 +2,11 @@
 
 ## Supported versions
 
-Security fixes are applied to the latest published DitakNet monitoring release
-(Docker/GHCR image tags such as `2.0.1`). Older tags may not receive backports
-unless a support agreement says otherwise.
+Security fixes are applied to the latest DitakNet monitoring release whose
+exact tag, GHCR image, GitHub Release, and signed feed are all published and
+verified. The current source target is `2.0.2`; a source version by itself is
+not proof of publication. Older tags may not receive backports unless a support
+agreement says otherwise.
 
 ## Reporting a vulnerability
 

@@ -277,11 +277,13 @@ def test_release_manifest_cli_signs_and_verifies_without_printing_private_key(
 
 def test_release_manifest_cli_builds_digest_bound_metadata(tmp_path: Path) -> None:
     policy = tmp_path / "policy.json"
+    notes = tmp_path / "notes.md"
     output = tmp_path / "unsigned.json"
     policy.write_text(
         json.dumps(_manifest()["compatibility"]),
         encoding="utf-8",
     )
+    notes.write_text("# DitakNet 2.1.0\n\nComplete notes.\n", encoding="utf-8")
 
     result = subprocess.run(
         [
@@ -306,6 +308,8 @@ def test_release_manifest_cli_builds_digest_bound_metadata(tmp_path: Path) -> No
             "21",
             "--policy",
             str(policy),
+            "--release-notes-file",
+            str(notes),
             "--output",
             str(output),
         ],
@@ -322,4 +326,6 @@ def test_release_manifest_cli_builds_digest_bound_metadata(tmp_path: Path) -> No
     )
     assert built["image_digest"] == f"sha256:{'a' * 64}"
     assert built["platform_digests"]["linux/arm64"] == f"sha256:{'c' * 64}"
+    assert built["release_notes"] == "# DitakNet 2.1.0\n\nComplete notes."
+    assert built["changelog_url"].endswith("/release/notes/2.1.0.md")
     assert "signatures" not in built

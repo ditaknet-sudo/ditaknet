@@ -57,7 +57,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--expected",
-        help="Exact stable SemVer expected by the release ref (for example 2.0.1)",
+        help="Exact stable SemVer expected by the release ref (for example 2.0.2)",
     )
     args = parser.parse_args()
 
@@ -168,6 +168,28 @@ def main() -> int:
     for label, actual in checks:
         if actual != expected:
             errors.append(f"{label}: expected {expected!r}, found {actual!r}")
+
+    try:
+        release_notes_path = f"release/notes/{canonical}.md"
+        release_notes = _read(release_notes_path)
+        expected_heading = f"# DitakNet {canonical}"
+        first_line = release_notes.splitlines()[0] if release_notes else ""
+        if first_line != expected_heading:
+            errors.append(
+                f"{release_notes_path}: first line must be {expected_heading!r}"
+            )
+        for required_heading in (
+            "## Highlights",
+            "## Upgrade from",
+            "## Validation scope",
+        ):
+            if required_heading not in release_notes:
+                errors.append(
+                    f"{release_notes_path}: missing required section "
+                    f"{required_heading!r}"
+                )
+    except (OSError, UnicodeError, IndexError) as exc:
+        errors.append(f"versioned release notes: {exc}")
 
     manifest_expected = {
         "manifest version": manifest_version,
@@ -306,6 +328,13 @@ def main() -> int:
                         errors.append(
                             f"update public key is invalid: {channel}/{key_id}"
                         )
+            release_channel = "beta" if "-" in canonical else "stable"
+            release_key_id = f"{release_channel}-release-v1"
+            if not (keyring.get(release_channel) or {}).get(release_key_id):
+                errors.append(
+                    "release public key is not provisioned: "
+                    f"{release_channel}/{release_key_id}"
+                )
     except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         errors.append(f"release security metadata: {exc}")
 

@@ -4,7 +4,7 @@
 # docs/UPGRADE.md. Starting first with unset values attaches empty volumes.
 services:
   storage-init:
-    image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-2.0.1}
+    image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-2.0.2}
     pull_policy: missing
     restart: "no"
     network_mode: none
@@ -35,7 +35,7 @@ services:
       - ditaknet-plugins:/app/plugins
 
   ditaknet:
-    image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-2.0.1}
+    image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-2.0.2}
     # Exact release tags are immutable. Reuse the cached image for offline
     # restarts; change DITAKNET_VERSION and run `docker compose pull` to update.
     pull_policy: missing
@@ -57,8 +57,8 @@ services:
     environment:
       # Keep runtime metadata aligned when an operator upgrades only the image
       # through DITAKNET_VERSION; these override the version in runtime.env.
-      APP_VERSION: ${DITAKNET_VERSION:-2.0.1}
-      IMAGE_TAG: ${DITAKNET_VERSION:-2.0.1}
+      APP_VERSION: ${DITAKNET_VERSION:-2.0.2}
+      IMAGE_TAG: ${DITAKNET_VERSION:-2.0.2}
     ports:
       - "${DITAKNET_BIND_ADDRESS:-0.0.0.0}:${DITAKNET_PORT:-5833}:5833"
     volumes:

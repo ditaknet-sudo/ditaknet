@@ -6,7 +6,7 @@
 #
 # 1) Copy truenas/.env.example → .env next to this file (or set vars in UI)
 # 2) Adjust DITAKNET_*_PATH to your pool datasets
-# 3) Pin DITAKNET_VERSION to an exact release (e.g. 2.0.1).
+# 3) Pin DITAKNET_VERSION to an exact release (e.g. 2.0.2).
 #
 # For better LAN discovery / ARP visibility, prefer:
 #   docker-compose.host-network.yml
@@ -14,7 +14,7 @@
 
 services:
   ditaknet:
-    image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-2.0.1}
+    image: ghcr.io/ditaknet-sudo/ditaknet:${DITAKNET_VERSION:-2.0.2}
     pull_policy: missing
     restart: unless-stopped
     init: true

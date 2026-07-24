@@ -372,3 +372,59 @@
 upgrade → rollback → deep-health փորձարկումն է։ Production signing key
 provisioning-ը, protected environments/update-feed protection-ը և առաջին նոր
 SemVer release-ը մնում են առանձին արտաքին prerequisite-ներ։
+
+## 2026-07-24 — `2.0.2` վերջնական release preparation
+
+- [x] Canonical source/build/Compose/TrueNAS/catalog version-ները համաժամեցվել
+  են `2.0.2`-ի հետ։ Legacy root `update-manifest.json`-ը դիտավորյալ մնացել է
+  անփոփոխ՝ որպես հրապարակված `2.0.1` artifact-ի պատմական schema-v1 գրառում։
+- [x] Ավելացվել է պարտադիր `release/notes/<version>.md` կառուցվածքը։
+  `release/notes/2.0.2.md`-ը ներառում է նաև փոքր fix/UI-design փոփոխությունների,
+  upgrade/rollback-ի և validation scope-ի բաժինները։ CI validator-ը բացակայող
+  կամ սխալ version note-ի դեպքում release-ը կկանգնեցնի։
+- [x] Release workflow-ը նույն versioned note-ը ներառում է ստորագրված manifest-ի
+  և GitHub Release-ի մեջ։
+- [x] Ստեղծվել է `stable-release-v1` Ed25519 trust anchor-ը։ Git-ում պահվում է
+  միայն public key-ը, private key-ը repository-ից դուրս է և encrypted secret-ով
+  provision է արված GitHub-ի `stable-release` environment-ում։
+- [x] `stable-release` environment-ը սահմանափակվել է միայն `main` branch և
+  `v*` tag deployment-ներով։ Repository ruleset-ի դատարկ include-ը ուղղվել է
+  `~ALL`-ի, ուստի բոլոր branch-երի deletion և force-push-ը հիմա արգելված են՝
+  առանց սովորական CI/update-feed fast-forward push-ը արգելափակելու։
+- [x] Ստեղծվել է առանձին orphan `update-feed` branch-ը՝ root commit
+  `f07c3be8a1ebd4bb9fa3bec7150c7e6b5a698624`։ Այն պարունակում է միայն feed
+  policy README, public raw URL-ը հասանելի է, և branch-ի վրա գնահատվում են
+  deletion/non-fast-forward կանոնները։ `stable.json`-ը կավելացնի միայն հաջող
+  tag workflow-ի վերջին promotion job-ը։
+- [x] Արագ release/metadata/TrueNAS/database/container թեստերը անցել են՝
+  **59 passed**, իսկ `ci_validate_release --expected 2.0.2`-ը կանաչ է։
+- [x] Մաքուր pinned Python 3.11 environment-ում ամբողջ suite-ը՝ **219 passed,
+  0 failed, 0 warnings**։ Dependency lock/pip check/audit, Bandit, Ruff,
+  compile, TrueNAS upstream validation/catalog render և տեղական signed
+  `2.0.2` manifest verification-ը հաջող են։
+- [x] Մեկուսացված native amd64 Docker build/smoke-ը անցել է՝ non-root,
+  read-only rootfs, capabilities, health/deep-health, persistence և չորս named
+  volume-ների անվտանգ initialization checks-ով։ Բոլոր test artifacts-ը
+  մաքրվել են, production DB hash-ը չի փոխվել։
+- [x] Source commit `ed43ee49fefbc818f41206378a460f1d91b9a651`-ի
+  `--no-hardlinks` clean clone-ը եղել է սկզբից և վերջում clean, և անցել է
+  release validator-ը, ամբողջ **220-test** suite-ը, TrueNAS Compose validation-ը
+  և actionlint-ը։ `linux/arm64` build/smoke, scans և SBOM/attestations-ը պետք է
+  հաստատի GitHub release CI-ն։
+- [ ] Review-ից հետո commit/push անել `main`, սպասել main CI-ի ամբողջական կանաչ
+  արդյունքին, միայն դրանից հետո ստեղծել ու push անել annotated `v2.0.2` tag-ը։
+- [ ] Tag workflow-ից հետո ստուգել GHCR exact multi-arch digest-ները,
+  attestations/SBOM-ները, GitHub Release-ը և byte-identical signed stable feed-ը։
+- [x] Մեկուսացված legacy `2.0.1` + `2.0.2` feed փորձը վերադարձրել է
+  `update_available=true`, `source_configured=true`,
+  `auto_update_enabled=false`։ Իրական legacy `2.0.1`-ը default update URL
+  չունի և չի կարող ինքնուրույն
+  տեղադրել `2.0.2`։ Առաջին անցումը one-time manual bootstrap է։ `2.0.2`-ից
+  սկսած՝ signed feed check/notification-ը ավտոմատ է, բայց container/TrueNAS App
+  redeploy-ը միշտ administrator-controlled է։
+- [!] Docker Desktop-ի 2026-07-24 ավտոմատ restart-ը վերաստեղծել է նախկին `C:`
+  bind path-երը, և գործող `ditaknet-monitoring` container-ը հիմա օգտագործում է
+  նոր փոքր DB, ոչ թե `D:`-ի պահպանված production DB-ն։ Մինչ mount recovery-ի
+  հաստատումը container-ը չվերատեղադրել և `D:` production DB-ին չդիպչել։
+- [ ] Իրական TrueNAS SCALE host/pool-ի վրա install → backup → upgrade →
+  rollback → deep-health acceptance test-ը մնում է առանձին hardware gate։

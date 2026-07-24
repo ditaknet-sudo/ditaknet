@@ -32,6 +32,15 @@ def test_offline_truenas_gate_passes() -> None:
     assert validator.validate() == []
 
 
+def test_truenas_validator_accepts_release_workflow_prerelease_versions() -> None:
+    validator = _load_validator()
+
+    for version in ("2.0.2", "2.0.3-beta.1", "2.0.3-rc.1"):
+        assert validator.SOURCE_VERSION.fullmatch(version)
+    for invalid in ("2.0", "2.0.3-alpha.1", "v2.0.3", "2.0.3-beta"):
+        assert validator.SOURCE_VERSION.fullmatch(invalid) is None
+
+
 def test_custom_app_bridge_and_host_are_mutually_exclusive() -> None:
     bridge = _yaml("truenas/docker-compose.yml")["services"]["ditaknet"]
     host = _yaml("truenas/docker-compose.host-network.yml")["services"]["ditaknet"]
@@ -63,20 +72,20 @@ def test_custom_app_bridge_and_host_are_mutually_exclusive() -> None:
 
 
 def test_catalog_uses_locked_official_library_and_release_image() -> None:
-    manifest = json.loads((ROOT / "update-manifest.json").read_text(encoding="utf-8"))
+    version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     lock = json.loads(
         (ROOT / "truenas-catalog/upstream-library.json").read_text(encoding="utf-8")
     )
     app = _yaml("truenas-catalog/ix-dev/community/ditaknet/app.yaml")
     values = _yaml("truenas-catalog/ix-dev/community/ditaknet/ix_values.yaml")
 
-    assert app["app_version"] == manifest["latest_version"]
+    assert app["app_version"] == version
     assert app["lib_version"] == lock["version"]
     assert app["lib_version_hash"] == lock["sha256"]
     assert len(app["lib_version_hash"]) == 64
     assert values["images"]["image"] == {
         "repository": "ghcr.io/ditaknet-sudo/ditaknet",
-        "tag": manifest["latest_version"],
+        "tag": version,
     }
     assert app["run_as_context"][0]["uid"] == 568
     assert app["run_as_context"][0]["gid"] == 568

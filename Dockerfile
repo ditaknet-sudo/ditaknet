@@ -2,8 +2,8 @@
 # multi-architecture base index used by linux/amd64 and linux/arm64 builds.
 FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
 
-ARG APP_VERSION=2.0.1
-ARG IMAGE_TAG=2.0.1
+ARG APP_VERSION=2.0.2
+ARG IMAGE_TAG=2.0.2
 ARG BUILD_COMMIT=
 ARG BUILD_DATE=
 ARG APP_UID=568

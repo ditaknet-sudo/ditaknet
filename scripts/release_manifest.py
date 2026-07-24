@@ -125,6 +125,11 @@ def _command_build(args: argparse.Namespace) -> int:
     policy = _read_json(args.policy, "update policy")
     if not isinstance(policy, dict):
         raise ValueError("update policy must be a JSON object")
+    release_notes = args.release_notes
+    if args.release_notes_file is not None:
+        release_notes = args.release_notes_file.read_text(encoding="utf-8").strip()
+        if not release_notes:
+            raise ValueError("release notes file must not be empty")
     manifest = {
         "schema_version": 2,
         "channel": args.channel,
@@ -145,9 +150,9 @@ def _command_build(args: argparse.Namespace) -> int:
         "critical": bool(args.critical),
         "changelog_url": (
             "https://github.com/ditaknet-sudo/ditaknet/blob/"
-            f"v{args.version}/CHANGELOG.md"
+            f"v{args.version}/release/notes/{args.version}.md"
         ),
-        "release_notes": args.release_notes
+        "release_notes": release_notes
         or f"DitakNet {args.version} signed container release.",
         "message": {
             "en": f"DitakNet {args.version} is available",
@@ -226,7 +231,9 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--published-at", required=True)
     build.add_argument("--sequence", required=True, type=int)
     build.add_argument("--policy", required=True, type=Path)
-    build.add_argument("--release-notes", default="")
+    release_notes = build.add_mutually_exclusive_group()
+    release_notes.add_argument("--release-notes", default="")
+    release_notes.add_argument("--release-notes-file", type=Path)
     build.add_argument("--critical", action="store_true")
     build.add_argument("--output", required=True, type=Path)
     build.set_defaults(handler=_command_build)

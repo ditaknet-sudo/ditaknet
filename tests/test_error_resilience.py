@@ -13,7 +13,6 @@ from ditaknet.resilience import (
     REQUEST_ID_HEADER,
     install_fastapi_exception_handlers,
     install_request_id_middleware,
-    log_route_exception,
 )
 from ditaknet.utils.paths import directory_status
 

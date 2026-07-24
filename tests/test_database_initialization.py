@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from ditaknet import database as db
+from ditaknet.config import settings
 from ditaknet.core import backup
 from ditaknet.core.rbac import DEFAULT_ROLES
 
@@ -93,7 +94,10 @@ def test_version_change_creates_validated_pre_migration_recovery_point(
             assert validation["valid"] is True
             assert validation["backup_origin"] == "pre_migration"
             assert validation["operation_context"]["source_version"] == "2.0.0"
-            assert validation["operation_context"]["target_version"] == "2.0.1"
+            assert (
+                validation["operation_context"]["target_version"]
+                == settings.app_version
+            )
         finally:
             await db.close_db()
 

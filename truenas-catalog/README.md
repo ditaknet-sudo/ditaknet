@@ -63,11 +63,11 @@ or start DitakNet. See [`UPSTREAM_VALIDATION.md`](UPSTREAM_VALIDATION.md).
 
 ## Before opening a PR to truenas/apps
 
-This directory is a pre-submission pack. The existing `2.0.1` tag is a legacy
-amd64 artifact and must not be presented as containing later Phase 3/4
-hardening or signed-update support. The root schema-v1 manifest is legacy only.
-Cut a new SemVer after the complete release gate passes, then update every
-catalog version pin before the upstream PR.
+This directory is a pre-submission pack pinned to `2.0.2`, the first version
+prepared by the hardened multi-architecture and signed-release workflow. Do not
+open the upstream PR until its exact GHCR tag, GitHub Release, attestations, and
+signed stable feed are all public and verified. The root schema-v1 manifest and
+`2.0.1` image remain legacy evidence only.
 
 1. Publish the new exact stable image and keep the intended public package
    **public**. Record its index digest and actual platform child digests. The
@@ -107,11 +107,12 @@ catalog version pin before the upstream PR.
    - legacy/pre-lock containers require an explicit stop; signed metadata rejects
      `image_only` and permits only `state_restore_required` or `unsupported`
 
-The committed signing keyring is intentionally empty during development. The
-first production submission also requires externally provisioned channel public
-keys, protected-environment private-key secrets, update-feed branch protection,
-and a verified new SemVer release. A historical GHCR `:latest` alias may exist,
-but it is unsupported and the current workflow never moves it.
+The committed keyring contains only the stable public trust anchor; its private
+key remains outside the repository in the protected stable release
+environment. The catalog submission still requires a verified `2.0.2` tag,
+multi-architecture image, attestations, GitHub Release, and promoted signed
+feed. A historical GHCR `:latest` alias may exist, but it is unsupported and
+the current workflow never moves it.
 
 ## Quick install today (without catalog merge)
 

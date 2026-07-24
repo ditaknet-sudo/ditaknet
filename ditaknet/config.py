@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     app_base_url: str = Field(
         default="http://localhost:5833", validation_alias="APP_BASE_URL"
     )
-    app_version: str = Field(default="2.0.1", validation_alias="APP_VERSION")
+    app_version: str = Field(default="2.0.2", validation_alias="APP_VERSION")
     build_commit: str = Field(
         default="",
         validation_alias=AliasChoices("BUILD_COMMIT", "APP_BUILD_COMMIT", "GIT_COMMIT"),
